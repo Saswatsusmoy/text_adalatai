@@ -1,0 +1,71 @@
+# Local-only notes, plans, research (never commit)
+.local/
+.local/**
+
+# OS
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Model checkpoints & large artifacts
+checkpoints/
+outputs/
+runs/
+wandb/
+mlruns/
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.onnx
+*.gguf
+
+# Processed data caches (keep source data/ tracked unless huge)
+data/processed/
+data/external/
+*.arrow
+*.parquet
+
+# Secrets
+secrets/
+*.pem
+*.key
+credentials.json
+hf_token
+.huggingface/
+
+# Logs
+*.log
+logs/
