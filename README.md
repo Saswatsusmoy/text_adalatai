@@ -10,22 +10,24 @@ Prototype text-translation system for **Indian court judgments** (English -> Hin
 | Phase | State |
 |-------|-------|
 | Preprocessing (OCR, join, segment, align, split) | Done -- 1,458 EN-HI pairs |
-| Tokenizer analysis + domain SentencePiece | Done -- SP 16k/32k/41k trained |
-| MT training / evaluation modules | Not started |
+| Tokenizer analysis + domain SPM v1/v2 | Done -- **Track C freeze: joint_full 41k** |
+| External Stage A legal bitext (MILPaC + Anuvaad) | Done -- ~993k filtered pairs |
+| Dual-track MT (defaults + custom vocab) | Plan adopted; training not started |
 
-Corpus: 30 parallel Supreme Court judgments. Working artifacts live under `data/`; living project history is `CHANGELOG.md` and `DESIGN_DECISIONS.md`.
+Corpus: 30 parallel Supreme Court judgments. Working history: `CHANGELOG.md`, `DESIGN_DECISIONS.md`. **Full experiment tables and freezes:** [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md).
 
 ## Repository layout
 
 ```
 data/                 # Judgments, intermediate pipeline output, models
-src/preprocessing/    # PDF OCR, line join, segmentation, LaBSE align, splits
+docs/EXPERIMENTS.md   # Research findings, benches, freezes
+src/preprocessing/    # PDF OCR, join, segment, LaBSE, splits, external Stage A ingest
 src/tokenizer/        # Corpus prep, SentencePiece train, benchmark, deep dive
 src/utils/            # Shared validation helpers
-configs/              # Pipeline config (paths + alignment thresholds)
+configs/              # Pipeline config (assignment + external Stage A)
 tests/                # pytest suite (run with PYTHONPATH=.)
-Makefile              # install, preprocess, tokenizer-*, test targets
-run_pipeline.py       # Step orchestrator
+Makefile              # install, preprocess, external-*, tokenizer-*, test
+run_pipeline.py       # Step orchestrator (preprocess | external | all)
 scripts/reproduce_all.sh
 ```
 
@@ -40,11 +42,17 @@ make install
 # or: pip install -r requirements.txt && python3 -m spacy download en_core_web_sm
 
 make test
-make preprocess          # full cleaning -> train/dev/test JSONL
+make preprocess          # assignment: cleaning -> train/dev/test JSONL
+make external-ingest     # Stage A: MILPaC + Anuvaad -> data/external/parallel/
+# make external-download # fetch raw external files if missing
 make tokenizer-bench     # needs trained models under data/models/tokenizers/
+# python run_pipeline.py --steps external
+# python run_pipeline.py --steps all
 ```
 
-Common targets: `make reextract`, `join`, `segment`, `align`, `output`, `tokenizer-train-all`, `tokenizer-bench`, `test`.
+Common targets: `make reextract`, `join`, `segment`, `align`, `output`, `external-download`, `external-ingest`, `tokenizer-train-all`, `tokenizer-c0`, `tokenizer-spm-v2-full-joint`, `tokenizer-bench`, `test`.
+
+**Track C production SPM:** `data/models/tokenizers/sentencepiece_legal_v2_joint_full_41000.model` (`src.config.SPM_V2_PRIMARY`).
 
 ## Pipeline outputs
 
@@ -56,10 +64,24 @@ data/aligned/all.jsonl       # 1,458 filtered pairs
 data/processed/{train,dev,test}.jsonl   # doc-level 80/10/10 (gitignored)
 data/models/tokenizers/      # SentencePiece models (gitignored)
 data/analysis/               # Tokenizer benchmark JSON
+data/external/raw/           # MILPaC xlsx + Anuvaad zips (gitignored)
+data/external/parallel/      # Filtered Stage A JSONL (gitignored)
 ```
 
-Alignment filters (code + `configs/preprocessing.yaml`): min LaBSE similarity 0.5, EN:HI char ratio 0.3-3.0, EN Jaccard near-dedup 0.85.
+**Assignment** filters (LaBSE path): min similarity 0.5, EN:HI char ratio 0.3-3.0, EN Jaccard near-dedup 0.85.
+
+**External Stage A** filters: same char ratio + min length + exact pair dedup; no LaBSE re-score (see DESIGN_DECISIONS §17). Combined file: `data/external/parallel/stage_a_en_hi.jsonl` (~993k pairs).
+
+## Documentation map
+
+| Doc | Role |
+|-----|------|
+| [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md) | All research findings, benches, freezes, reproduce commands |
+| [`DESIGN_DECISIONS.md`](DESIGN_DECISIONS.md) | Why major choices were made |
+| [`CHANGELOG.md`](CHANGELOG.md) | What changed over time |
+| [`AGENTS.md`](AGENTS.md) | Agent/coding rules for this repo |
+| `.local/` | Private plans (not committed) |
 
 ## License / data
 
-Assignment corpus provided for evaluation purposes. External public corpora (if used) are documented with sources and licenses in CHANGELOG / DESIGN_DECISIONS.
+Assignment corpus provided for evaluation purposes. External Stage A: MILPaC (CC BY-NC-SA 4.0), Anuvaad legal EN-HI (CC BY 4.0). Details in CHANGELOG / DESIGN_DECISIONS / EXPERIMENTS.

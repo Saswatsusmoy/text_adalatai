@@ -1,0 +1,679 @@
+{
+  "primary_freeze": "sentencepiece_legal_v2_joint_full_41000",
+  "splits": {
+    "held_out": {
+      "results": [
+        {
+          "name": "v1 SP 16000 (Prarabdha)",
+          "vocab": 16000,
+          "dev_tokens": 5903,
+          "en_chars_per_tok": 4.18,
+          "hi_chars_per_tok": 3.47,
+          "hi_en_ratio": 0.758,
+          "total_tokens": 13395,
+          "time_s": 0.0,
+          "en_subword_regularity": 2.99,
+          "hi_subword_regularity": 2.57
+        },
+        {
+          "name": "v1 SP 32000 (Prarabdha)",
+          "vocab": 32000,
+          "dev_tokens": 13014,
+          "en_chars_per_tok": 4.52,
+          "hi_chars_per_tok": 3.81,
+          "hi_en_ratio": 0.748,
+          "total_tokens": 12316,
+          "time_s": 0.0,
+          "en_subword_regularity": 3.1,
+          "hi_subword_regularity": 2.7
+        },
+        {
+          "name": "v1 SP 41000 (Prarabdha)",
+          "vocab": 41000,
+          "dev_tokens": 16840,
+          "en_chars_per_tok": 4.63,
+          "hi_chars_per_tok": 3.95,
+          "hi_en_ratio": 0.739,
+          "total_tokens": 11965,
+          "time_s": 0.0,
+          "en_subword_regularity": 3.13,
+          "hi_subword_regularity": 2.74
+        },
+        {
+          "name": "v2 SP hi_32000",
+          "vocab": 32000,
+          "dev_tokens": 24155,
+          "en_chars_per_tok": 2.9,
+          "hi_chars_per_tok": 4.43,
+          "hi_en_ratio": 0.412,
+          "total_tokens": 15518,
+          "time_s": 0.0,
+          "en_subword_regularity": 2.28,
+          "hi_subword_regularity": 2.9
+        },
+        {
+          "name": "v2 SP hi_41000",
+          "vocab": 41000,
+          "dev_tokens": 30095,
+          "en_chars_per_tok": 3.07,
+          "hi_chars_per_tok": 4.46,
+          "hi_en_ratio": 0.434,
+          "total_tokens": 14880,
+          "time_s": 0.0,
+          "en_subword_regularity": 2.41,
+          "hi_subword_regularity": 2.91
+        },
+        {
+          "name": "v2 SP joint_32000",
+          "vocab": 32000,
+          "dev_tokens": 12733,
+          "en_chars_per_tok": 4.95,
+          "hi_chars_per_tok": 4.32,
+          "hi_en_ratio": 0.722,
+          "total_tokens": 11082,
+          "time_s": 0.0,
+          "en_subword_regularity": 3.21,
+          "hi_subword_regularity": 2.88
+        },
+        {
+          "name": "v2 SP joint_41000",
+          "vocab": 41000,
+          "dev_tokens": 15971,
+          "en_chars_per_tok": 4.99,
+          "hi_chars_per_tok": 4.34,
+          "hi_en_ratio": 0.724,
+          "total_tokens": 11004,
+          "time_s": 0.0,
+          "en_subword_regularity": 3.22,
+          "hi_subword_regularity": 2.89
+        },
+        {
+          "name": "v2 SP joint_full_41000",
+          "vocab": 41000,
+          "dev_tokens": 16217,
+          "en_chars_per_tok": 4.99,
+          "hi_chars_per_tok": 4.37,
+          "hi_en_ratio": 0.72,
+          "total_tokens": 10978,
+          "time_s": 0.0,
+          "en_subword_regularity": 3.22,
+          "hi_subword_regularity": 2.9
+        }
+      ],
+      "n_pairs": 322
+    },
+    "test": {
+      "results": [
+        {
+          "name": "v1 SP 16000 (Prarabdha)",
+          "vocab": 16000,
+          "dev_tokens": 5903,
+          "en_chars_per_tok": 4.15,
+          "hi_chars_per_tok": 3.52,
+          "hi_en_ratio": 0.799,
+          "total_tokens": 7597,
+          "time_s": 0.0,
+          "en_subword_regularity": 2.96,
+          "hi_subword_regularity": 2.58
+        },
+        {
+          "name": "v1 SP 32000 (Prarabdha)",
+          "vocab": 32000,
+          "dev_tokens": 13014,
+          "en_chars_per_tok": 4.51,
+          "hi_chars_per_tok": 3.85,
+          "hi_en_ratio": 0.793,
+          "total_tokens": 6969,
+          "time_s": 0.0,
+          "en_subword_regularity": 3.08,
+          "hi_subword_regularity": 2.71
+        },
+        {
+          "name": "v1 SP 41000 (Prarabdha)",
+          "vocab": 41000,
+          "dev_tokens": 16840,
+          "en_chars_per_tok": 4.61,
+          "hi_chars_per_tok": 3.98,
+          "hi_en_ratio": 0.788,
+          "total_tokens": 6784,
+          "time_s": 0.0,
+          "en_subword_regularity": 3.11,
+          "hi_subword_regularity": 2.75
+        },
+        {
+          "name": "v2 SP hi_32000",
+          "vocab": 32000,
+          "dev_tokens": 24155,
+          "en_chars_per_tok": 2.87,
+          "hi_chars_per_tok": 4.49,
+          "hi_en_ratio": 0.434,
+          "total_tokens": 8743,
+          "time_s": 0.0,
+          "en_subword_regularity": 2.27,
+          "hi_subword_regularity": 2.91
+        },
+        {
+          "name": "v2 SP hi_41000",
+          "vocab": 41000,
+          "dev_tokens": 30095,
+          "en_chars_per_tok": 3.04,
+          "hi_chars_per_tok": 4.51,
+          "hi_en_ratio": 0.458,
+          "total_tokens": 8385,
+          "time_s": 0.0,
+          "en_subword_regularity": 2.39,
+          "hi_subword_regularity": 2.92
+        },
+        {
+          "name": "v2 SP joint_32000",
+          "vocab": 32000,
+          "dev_tokens": 12733,
+          "en_chars_per_tok": 4.93,
+          "hi_chars_per_tok": 4.38,
+          "hi_en_ratio": 0.764,
+          "total_tokens": 6268,
+          "time_s": 0.0,
+          "en_subword_regularity": 3.2,
+          "hi_subword_regularity": 2.89
+        },
+        {
+          "name": "v2 SP joint_41000",
+          "vocab": 41000,
+          "dev_tokens": 15971,
+          "en_chars_per_tok": 4.98,
+          "hi_chars_per_tok": 4.4,
+          "hi_en_ratio": 0.768,
+          "total_tokens": 6219,
+          "time_s": 0.0,
+          "en_subword_regularity": 3.21,
+          "hi_subword_regularity": 2.9
+        },
+        {
+          "name": "v2 SP joint_full_41000",
+          "vocab": 41000,
+          "dev_tokens": 16217,
+          "en_chars_per_tok": 4.97,
+          "hi_chars_per_tok": 4.42,
+          "hi_en_ratio": 0.764,
+          "total_tokens": 6211,
+          "time_s": 0.0,
+          "en_subword_regularity": 3.21,
+          "hi_subword_regularity": 2.91
+        }
+      ],
+      "n_pairs": 190
+    },
+    "all": {
+      "results": [
+        {
+          "name": "v1 SP 16000 (Prarabdha)",
+          "vocab": 16000,
+          "dev_tokens": 5903,
+          "en_chars_per_tok": 4.07,
+          "hi_chars_per_tok": 3.33,
+          "hi_en_ratio": 0.772,
+          "total_tokens": 59833,
+          "time_s": 0.0,
+          "en_subword_regularity": 3.01,
+          "hi_subword_regularity": 2.5
+        },
+        {
+          "name": "v1 SP 32000 (Prarabdha)",
+          "vocab": 32000,
+          "dev_tokens": 13014,
+          "en_chars_per_tok": 4.39,
+          "hi_chars_per_tok": 3.7,
+          "hi_en_ratio": 0.751,
+          "total_tokens": 54789,
+          "time_s": 0.0,
+          "en_subword_regularity": 3.1,
+          "hi_subword_regularity": 2.66
+        },
+        {
+          "name": "v1 SP 41000 (Prarabdha)",
+          "vocab": 41000,
+          "dev_tokens": 16840,
+          "en_chars_per_tok": 4.51,
+          "hi_chars_per_tok": 3.84,
+          "hi_en_ratio": 0.743,
+          "total_tokens": 53124,
+          "time_s": 0.0,
+          "en_subword_regularity": 3.13,
+          "hi_subword_regularity": 2.71
+        },
+        {
+          "name": "v2 SP hi_32000",
+          "vocab": 32000,
+          "dev_tokens": 24155,
+          "en_chars_per_tok": 2.83,
+          "hi_chars_per_tok": 4.32,
+          "hi_en_ratio": 0.415,
+          "total_tokens": 68639,
+          "time_s": 0.0,
+          "en_subword_regularity": 2.28,
+          "hi_subword_regularity": 2.9
+        },
+        {
+          "name": "v2 SP hi_41000",
+          "vocab": 41000,
+          "dev_tokens": 30095,
+          "en_chars_per_tok": 3.0,
+          "hi_chars_per_tok": 4.35,
+          "hi_en_ratio": 0.436,
+          "total_tokens": 65691,
+          "time_s": 0.0,
+          "en_subword_regularity": 2.4,
+          "hi_subword_regularity": 2.91
+        },
+        {
+          "name": "v2 SP joint_32000",
+          "vocab": 32000,
+          "dev_tokens": 12733,
+          "en_chars_per_tok": 4.84,
+          "hi_chars_per_tok": 4.19,
+          "hi_en_ratio": 0.731,
+          "total_tokens": 49133,
+          "time_s": 0.0,
+          "en_subword_regularity": 3.21,
+          "hi_subword_regularity": 2.87
+        },
+        {
+          "name": "v2 SP joint_41000",
+          "vocab": 41000,
+          "dev_tokens": 15971,
+          "en_chars_per_tok": 4.89,
+          "hi_chars_per_tok": 4.23,
+          "hi_en_ratio": 0.732,
+          "total_tokens": 48602,
+          "time_s": 0.0,
+          "en_subword_regularity": 3.22,
+          "hi_subword_regularity": 2.89
+        },
+        {
+          "name": "v2 SP joint_full_41000",
+          "vocab": 41000,
+          "dev_tokens": 16217,
+          "en_chars_per_tok": 4.89,
+          "hi_chars_per_tok": 4.23,
+          "hi_en_ratio": 0.73,
+          "total_tokens": 48611,
+          "time_s": 0.0,
+          "en_subword_regularity": 3.22,
+          "hi_subword_regularity": 2.89
+        }
+      ],
+      "n_pairs": 1458
+    }
+  },
+  "glossary_fragmentation": {
+    "v1_41k": {
+      "न्यायालय": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁न्यायालय"
+        ]
+      },
+      "अपीलार्थी": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁अपीलार्थी"
+        ]
+      },
+      "अनुच्छेद": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁अनुच्छेद"
+        ]
+      },
+      "अधिकारिता": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁अधिकारिता"
+        ]
+      },
+      "धारा": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁धारा"
+        ]
+      },
+      "Section": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁Section"
+        ]
+      },
+      "impugned": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁impugned"
+        ]
+      },
+      "Appellant": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁Appellant"
+        ]
+      },
+      "High Court": {
+        "n_tokens": 2,
+        "pieces": [
+          "▁High",
+          "▁Court"
+        ]
+      },
+      "S.L.P.": {
+        "n_tokens": 6,
+        "pieces": [
+          "▁S",
+          ".",
+          "L",
+          ".",
+          "P",
+          "."
+        ]
+      },
+      "Writ Petition": {
+        "n_tokens": 4,
+        "pieces": [
+          "▁W",
+          "r",
+          "it",
+          "▁Petition"
+        ]
+      },
+      "respondent": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁respondent"
+        ]
+      }
+    },
+    "v2_joint_sample_41k": {
+      "न्यायालय": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁न्यायालय"
+        ]
+      },
+      "अपीलार्थी": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁अपीलार्थी"
+        ]
+      },
+      "अनुच्छेद": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁अनुच्छेद"
+        ]
+      },
+      "अधिकारिता": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁अधिकारिता"
+        ]
+      },
+      "धारा": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁धारा"
+        ]
+      },
+      "Section": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁Section"
+        ]
+      },
+      "impugned": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁impugned"
+        ]
+      },
+      "Appellant": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁Appellant"
+        ]
+      },
+      "High Court": {
+        "n_tokens": 2,
+        "pieces": [
+          "▁High",
+          "▁Court"
+        ]
+      },
+      "S.L.P.": {
+        "n_tokens": 6,
+        "pieces": [
+          "▁S",
+          ".",
+          "L",
+          ".",
+          "P",
+          "."
+        ]
+      },
+      "Writ Petition": {
+        "n_tokens": 2,
+        "pieces": [
+          "▁Writ",
+          "▁Petition"
+        ]
+      },
+      "respondent": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁respondent"
+        ]
+      }
+    },
+    "v2_joint_full_41k": {
+      "न्यायालय": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁न्यायालय"
+        ]
+      },
+      "अपीलार्थी": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁अपीलार्थी"
+        ]
+      },
+      "अनुच्छेद": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁अनुच्छेद"
+        ]
+      },
+      "अधिकारिता": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁अधिकारिता"
+        ]
+      },
+      "धारा": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁धारा"
+        ]
+      },
+      "Section": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁Section"
+        ]
+      },
+      "impugned": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁impugned"
+        ]
+      },
+      "Appellant": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁Appellant"
+        ]
+      },
+      "High Court": {
+        "n_tokens": 2,
+        "pieces": [
+          "▁High",
+          "▁Court"
+        ]
+      },
+      "S.L.P.": {
+        "n_tokens": 6,
+        "pieces": [
+          "▁S",
+          ".",
+          "L",
+          ".",
+          "P",
+          "."
+        ]
+      },
+      "Writ Petition": {
+        "n_tokens": 2,
+        "pieces": [
+          "▁Writ",
+          "▁Petition"
+        ]
+      },
+      "respondent": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁respondent"
+        ]
+      }
+    },
+    "v2_hi_41k": {
+      "न्यायालय": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁न्यायालय"
+        ]
+      },
+      "अपीलार्थी": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁अपीलार्थी"
+        ]
+      },
+      "अनुच्छेद": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁अनुच्छेद"
+        ]
+      },
+      "अधिकारिता": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁अधिकारिता"
+        ]
+      },
+      "धारा": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁धारा"
+        ]
+      },
+      "Section": {
+        "n_tokens": 2,
+        "pieces": [
+          "▁",
+          "Section"
+        ]
+      },
+      "impugned": {
+        "n_tokens": 3,
+        "pieces": [
+          "▁imp",
+          "ug",
+          "ned"
+        ]
+      },
+      "Appellant": {
+        "n_tokens": 1,
+        "pieces": [
+          "▁Appellant"
+        ]
+      },
+      "High Court": {
+        "n_tokens": 2,
+        "pieces": [
+          "▁High",
+          "▁Court"
+        ]
+      },
+      "S.L.P.": {
+        "n_tokens": 6,
+        "pieces": [
+          "▁S",
+          ".",
+          "L",
+          ".",
+          "P",
+          "."
+        ]
+      },
+      "Writ Petition": {
+        "n_tokens": 3,
+        "pieces": [
+          "▁W",
+          "rit",
+          "▁Petition"
+        ]
+      },
+      "respondent": {
+        "n_tokens": 2,
+        "pieces": [
+          "▁respond",
+          "ent"
+        ]
+      }
+    }
+  },
+  "summary_held_out": {
+    "joint_full_41000": {
+      "name": "v2 SP joint_full_41000",
+      "vocab": 41000,
+      "dev_tokens": 16217,
+      "en_chars_per_tok": 4.99,
+      "hi_chars_per_tok": 4.37,
+      "hi_en_ratio": 0.72,
+      "total_tokens": 10978,
+      "time_s": 0.0,
+      "en_subword_regularity": 3.22,
+      "hi_subword_regularity": 2.9
+    },
+    "joint_sample_41000": {
+      "name": "v2 SP joint_41000",
+      "vocab": 41000,
+      "dev_tokens": 15971,
+      "en_chars_per_tok": 4.99,
+      "hi_chars_per_tok": 4.34,
+      "hi_en_ratio": 0.724,
+      "total_tokens": 11004,
+      "time_s": 0.0,
+      "en_subword_regularity": 3.22,
+      "hi_subword_regularity": 2.89
+    },
+    "v1_41000": {
+      "name": "v1 SP 41000 (Prarabdha)",
+      "vocab": 41000,
+      "dev_tokens": 16840,
+      "en_chars_per_tok": 4.63,
+      "hi_chars_per_tok": 3.95,
+      "hi_en_ratio": 0.739,
+      "total_tokens": 11965,
+      "time_s": 0.0,
+      "en_subword_regularity": 3.13,
+      "hi_subword_regularity": 2.74
+    }
+  }
+}

@@ -2,6 +2,8 @@
 
 This document records architectural and implementation decisions made during the project, along with the rationale behind each.
 
+**Full experiment tables, freezes, and reproduce steps:** see [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md) (tokenizer survey, SPM v1/v2, Stage A data, dual-track plan, vocab ablation, Track C freeze).
+
 ---
 
 ## 1. PDF Extraction Tool: evaluated 5 alternatives for Hindi Devanagari text
@@ -525,3 +527,75 @@ To validate whether SentencePiece's advantage is architectural or just data-scal
 - Config yaml lists live steps + skipped steps + alignment thresholds as documentation, not a second runtime engine.
 
 **Rationale:** A broken `make eval` or wrong import path is worse than omitting future phases. Phase scaffolding appears only when the phase code exists.
+
+---
+
+## 17. External Stage A data: ingest filters, not full PDF pipeline
+
+**Date:** 2026-07-26
+
+**Context:** Gate 9 needs legal EN-HI bitext beyond the 1,458 assignment pairs. T0 sources are MILPaC (CC BY-NC-SA) and Anuvaad legal EN-HI (CC BY). Both ship as already-aligned units (xlsx rows or parallel `.en`/`.hi` line files), not as raw dual PDFs.
+
+**Decision:**
+- Download raw files to `data/external/raw/{milpac,anuvaad}/`.
+- Convert to the same JSONL fields as assignment pairs (`en_text`, `hi_text`, `source`, `doc_id`, `similarity=null`).
+- Apply length-ratio (0.3-3.0) and min-length (>3) filters shared with `align_sentences.py`; exact (en, hi) dedup.
+- Do **not** re-run OCR, line join, spaCy/danda segmentation, or LaBSE on these dumps.
+- Write per-source JSONL plus combined `stage_a_en_hi.jsonl` under `data/external/parallel/` (gitignored via `data/external/`).
+
+**Why skip LaBSE here:** Anuvaad judiciary alone is ~830k lines. Full mutual-best re-alignment would dominate wall time and RAM on a laptop for marginal gain on auto-mined bitext. MILPaC is small and already expert-oriented. Assignment data remains the only corpus that went through our LaBSE pipeline. Optional future: LaBSE score filter on a sample or on MILPaC only.
+
+**Role split:**
+- `stage_a_en_hi.jsonl` -> Stage A domain FT/LoRA
+- `data/processed/{train,dev,test}.jsonl` -> Stage B + final eval (document-level, frozen)
+- Never mix assignment test docs into Stage A silently; Stage A is external-only unless we deliberately add assignment train later
+
+**Rationale:** Reusing the PDF pipeline would be the wrong abstraction: the expensive steps already happened upstream (human/legal translation + Anuvaad mining). Our value is schema normalization, shared QC thresholds, and reproducible paths.
+
+---
+
+## 18. Track C0: SPM v2 on Stage A + train, never eval docs
+
+**Date:** 2026-07-26
+
+**Context:** Dual-track plan adopts a first-class Indic legal tokenizer. v1 SP (16/32/41k) was fit on Prarabdha mono HI scrape only. Stage A bitext (~992k pairs) is better legal text. SPM must not see assignment test/dev surface forms or fertility tables on held-out pairs are optimistic.
+
+**Decision:**
+- Build `spm_corpus_legal_v2_{joint,hi}.txt` from `stage_a_en_hi.jsonl` + `processed/train.jsonl` only.
+- Hard-fail if any assignment dev/test `doc_id` appears in train-side input.
+- Train new prefixes `sentencepiece_legal_v2_{hi|joint}_{32000|41000}` under `data/models/tokenizers/`; **keep v1** `sentencepiece_{16000,32000,41000}` for ablation.
+- Benchmark default eval = assignment **held_out** (dev+test docs), not full 1,458 pairs.
+- Optional Prarabdha mix is off by default (`--prarabdha-frac 0`).
+
+**Why joint + hi grid:** HI-only maximizes Devanagari packing; joint EN+HI helps legal English pieces (Section, S.L.P., party names) for a translation-oriented vocab.
+
+**Held-out results (assignment dev+test, 322 pairs):**
+
+| Model | HI c/t | HI/EN | Total tok | Dev pieces |
+|-------|-------:|------:|----------:|-----------:|
+| v2 hi 41k | 4.46 | 0.434 | 14,880 | 30,095 |
+| v2 joint 41k | **4.34** | **0.724** | **11,004** | 15,971 |
+| v1 Prarabdha 41k | 3.95 | 0.739 | 11,965 | 16,840 |
+
+HI-only wins raw HI compression but **wrecks English** (HI/EN << 1 means EN is over-tokenized → higher total). **Primary freeze: `sentencepiece_legal_v2_joint_41000`** for translation-oriented work. Keep HI-only models for HI-only analysis ablations.
+
+**Training note (sample joint):** Initial joint 32/41k used `input_sentence_size=1_000_000` after full-load OOM on raw joint.
+
+**Full joint within 16GB (follow-up):** Exact-line dedupe (~2% dups) + optional 4096-char cap cut peak enough that Unigram **profile=full** succeeded: all ~1.95M unique lines, `input_sentence_size=0`, `seed_sentencepiece_size=250_000`, `train_extremely_large_corpus=True`. Artifact: `sentencepiece_legal_v2_joint_full_41000` (sample `joint_41000` kept for ablation). Fallback ladder if full fails: `full_tight` then `full_sample_15`. Still Unigram only (not byte-level BPE). HI-only models remain full-corpus on HI dump.
+
+**Vocab-size ablation (joint_full Unigram, same deduped corpus):**
+
+| Model | Held-out HI c/t | Held-out total | Test total | Dev pieces |
+|-------|----------------:|---------------:|-----------:|-----------:|
+| full 41k | 4.37 | 10,978 | 6,211 | 16,217 |
+| full 48k | 4.38 | 10,937 | 6,194 | 18,524 |
+| full 64k | **4.42** | **10,819** | **6,125** | 23,742 |
+| v1 41k (ref) | 3.95 | 11,965 | 6,784 | 16,840 |
+
+Gains 41k->64k are real but modest (~1.4% fewer held-out tokens; ~1.4% on test). Glossary legal terms stay 1-piece across 41/48/64 for core HI + Section/impugned.
+
+**Production freeze (Track C): `sentencepiece_legal_v2_joint_full_41000`.**
+
+Rationale: among full-joint models, 64k wins pure packing, but larger V increases risk of dedicating pieces to frequent legal collocations and undertrained long-tail IDs in later MT. 41k keeps strong gains vs v1 (~8% fewer test tokens) with a smaller emb table and more compositional pressure. 48k/64k retained as ablations only. Report: `data/analysis/tokenizer_vocab_size_ablation.json`.
+
+**Not in C0:** model embedding resize / LoRA (Track C1); default-backbone zero-shot (Track D).

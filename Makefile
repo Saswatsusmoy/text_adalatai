@@ -1,6 +1,9 @@
 .PHONY: install venv reextract join segment align output preprocess \
+	external-download external-ingest \
 	tokenizer-prepare tokenizer-train-16k tokenizer-train-32k tokenizer-train-41k \
-	tokenizer-train-all tokenizer-train tokenizer-bench test test-all clean clean-data all
+	tokenizer-train-all tokenizer-train tokenizer-bench \
+	tokenizer-spm-v2-corpus tokenizer-spm-v2-train tokenizer-spm-v2-bench tokenizer-c0 \
+	test test-all clean clean-data all
 
 # --- Setup ---
 
@@ -34,6 +37,14 @@ output:
 preprocess: reextract join segment align output
 	@echo "Preprocessing complete"
 
+# --- External legal parallel (Stage A) ---
+
+external-download:
+	PYTHONPATH=. python3 src/preprocessing/ingest_external_parallel.py --download
+
+external-ingest:
+	PYTHONPATH=. python3 src/preprocessing/ingest_external_parallel.py
+
 # --- Tokenizer ---
 
 tokenizer-prepare:
@@ -60,7 +71,26 @@ tokenizer-train-all: tokenizer-train-16k tokenizer-train-32k tokenizer-train-41k
 tokenizer-train: tokenizer-train-all
 
 tokenizer-bench:
-	PYTHONPATH=. python3 src/tokenizer/benchmark.py
+	PYTHONPATH=. python3 src/tokenizer/benchmark.py --eval held_out
+
+# Track C0: legal SPM v2 (Stage A + assignment train; never dev/test)
+tokenizer-spm-v2-corpus:
+	PYTHONPATH=. python3 src/tokenizer/prepare_spm_corpus.py --mode joint
+	PYTHONPATH=. python3 src/tokenizer/prepare_spm_corpus.py --mode hi
+
+tokenizer-spm-v2-train: tokenizer-spm-v2-corpus
+	PYTHONPATH=. python3 src/tokenizer/train_v2.py
+
+tokenizer-spm-v2-bench:
+	PYTHONPATH=. python3 src/tokenizer/benchmark.py --eval held_out
+
+tokenizer-c0: tokenizer-spm-v2-train tokenizer-spm-v2-bench
+	@echo "Track C0 complete (SPM v2 train + held-out bench)"
+
+# Full-as-possible joint Unigram (dedupe + memory profiles; keeps sample joint_41k)
+tokenizer-spm-v2-full-joint:
+	PYTHONPATH=. python3 src/tokenizer/train_full_joint.py --vocab-size 41000 --max-chars 4096
+	PYTHONPATH=. python3 src/tokenizer/benchmark.py --eval held_out
 
 # --- Tests ---
 

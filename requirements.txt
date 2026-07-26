@@ -28,6 +28,7 @@ huggingface-hub>=0.30.0
 datasets>=3.5.0
 pandas>=2.2.0
 pyarrow>=19.0.0
+openpyxl>=3.1.0
 
 # Evaluation
 sacrebleu>=2.5.0

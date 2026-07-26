@@ -1,0 +1,126 @@
+{
+  "eval_split": "held_out",
+  "n_pairs": 322,
+  "results": [
+    {
+      "name": "v1 SP 16000 (Prarabdha)",
+      "vocab": 16000,
+      "dev_tokens": 5903,
+      "en_chars_per_tok": 4.18,
+      "hi_chars_per_tok": 3.47,
+      "hi_en_ratio": 0.758,
+      "total_tokens": 13395,
+      "time_s": 0.0,
+      "en_subword_regularity": 2.99,
+      "hi_subword_regularity": 2.57
+    },
+    {
+      "name": "v1 SP 32000 (Prarabdha)",
+      "vocab": 32000,
+      "dev_tokens": 13014,
+      "en_chars_per_tok": 4.52,
+      "hi_chars_per_tok": 3.81,
+      "hi_en_ratio": 0.748,
+      "total_tokens": 12316,
+      "time_s": 0.0,
+      "en_subword_regularity": 3.1,
+      "hi_subword_regularity": 2.7
+    },
+    {
+      "name": "v1 SP 41000 (Prarabdha)",
+      "vocab": 41000,
+      "dev_tokens": 16840,
+      "en_chars_per_tok": 4.63,
+      "hi_chars_per_tok": 3.95,
+      "hi_en_ratio": 0.739,
+      "total_tokens": 11965,
+      "time_s": 0.0,
+      "en_subword_regularity": 3.13,
+      "hi_subword_regularity": 2.74
+    },
+    {
+      "name": "v2 SP hi_32000",
+      "vocab": 32000,
+      "dev_tokens": 24155,
+      "en_chars_per_tok": 2.9,
+      "hi_chars_per_tok": 4.43,
+      "hi_en_ratio": 0.412,
+      "total_tokens": 15518,
+      "time_s": 0.0,
+      "en_subword_regularity": 2.28,
+      "hi_subword_regularity": 2.9
+    },
+    {
+      "name": "v2 SP hi_41000",
+      "vocab": 41000,
+      "dev_tokens": 30095,
+      "en_chars_per_tok": 3.07,
+      "hi_chars_per_tok": 4.46,
+      "hi_en_ratio": 0.434,
+      "total_tokens": 14880,
+      "time_s": 0.0,
+      "en_subword_regularity": 2.41,
+      "hi_subword_regularity": 2.91
+    },
+    {
+      "name": "v2 SP joint_32000",
+      "vocab": 32000,
+      "dev_tokens": 12733,
+      "en_chars_per_tok": 4.95,
+      "hi_chars_per_tok": 4.32,
+      "hi_en_ratio": 0.722,
+      "total_tokens": 11082,
+      "time_s": 0.0,
+      "en_subword_regularity": 3.21,
+      "hi_subword_regularity": 2.88
+    },
+    {
+      "name": "v2 SP joint_41000",
+      "vocab": 41000,
+      "dev_tokens": 15971,
+      "en_chars_per_tok": 4.99,
+      "hi_chars_per_tok": 4.34,
+      "hi_en_ratio": 0.724,
+      "total_tokens": 11004,
+      "time_s": 0.0,
+      "en_subword_regularity": 3.22,
+      "hi_subword_regularity": 2.89
+    },
+    {
+      "name": "v2 SP joint_full_41000",
+      "vocab": 41000,
+      "dev_tokens": 16217,
+      "en_chars_per_tok": 4.99,
+      "hi_chars_per_tok": 4.37,
+      "hi_en_ratio": 0.72,
+      "total_tokens": 10978,
+      "time_s": 0.0,
+      "en_subword_regularity": 3.22,
+      "hi_subword_regularity": 2.9
+    },
+    {
+      "name": "v2 SP joint_full_48000",
+      "vocab": 48000,
+      "dev_tokens": 18524,
+      "en_chars_per_tok": 5.01,
+      "hi_chars_per_tok": 4.38,
+      "hi_en_ratio": 0.721,
+      "total_tokens": 10937,
+      "time_s": 0.0,
+      "en_subword_regularity": 3.23,
+      "hi_subword_regularity": 2.91
+    },
+    {
+      "name": "v2 SP joint_full_64000",
+      "vocab": 64000,
+      "dev_tokens": 23742,
+      "en_chars_per_tok": 5.07,
+      "hi_chars_per_tok": 4.42,
+      "hi_en_ratio": 0.722,
+      "total_tokens": 10819,
+      "time_s": 0.0,
+      "en_subword_regularity": 3.24,
+      "hi_subword_regularity": 2.93
+    }
+  ]
+}

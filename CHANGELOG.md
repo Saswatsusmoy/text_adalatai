@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`docs/EXPERIMENTS.md`:** Consolidated research log (assignment pipeline, Stage A data, cross-model tokenizer survey, SPM v1/v2, joint vs HI-only, full-joint 16GB path, vocab ablation 41/48/64k, Track C freeze joint_full_41000, dual-track plan, artifact index, reproduce commands). README and DESIGN_DECISIONS link to it.
+
+- **Joint full vocab ablation 48k + 64k:** Trained `sentencepiece_legal_v2_joint_full_{48000,64000}` on same deduped joint corpus (profile=full). Held-out/test/all benches vs 41k in `data/analysis/tokenizer_vocab_size_ablation.json`. **Track C production freeze: `sentencepiece_legal_v2_joint_full_41000`** (generalization / emb size over max packing; 64k ablation only).
+
+- **Full-joint SPM on 16GB (dedupe path):** `dedupe_text_file` + `train_full_joint.py` tries Unigram profiles `full` -> `full_tight` -> `full_sample_15` in a child process (OOM-safe). Dedupe joint corpus (~2% exact dups) + max 4096 chars enabled full Unigram train on **all remaining lines** (`input_sentence_size=0`, seed 250k). Winner: `sentencepiece_legal_v2_joint_full_41000` (does not overwrite sample `joint_41000`). Makefile: `tokenizer-spm-v2-full-joint`. No byte-level BPE.
+
+- **Track C0 legal SentencePiece v2:** `prepare_spm_corpus.py` builds SPM train text from Stage A + assignment train only (hard-excludes dev/test docs 8,9,24 and 1,4,21). Corpora: joint ~1.99M lines / 291M chars; hi ~994k lines / 139M chars. `train_v2.py` trains `sentencepiece_legal_v2_{hi,joint}_{32k,41k}` without overwriting v1. Joint train samples 1M sentences (RAM). Held-out bench (322 pairs): **joint 41k wins for MT** (HI c/t 4.34, HI/EN 0.724, total 11,004 vs v1 41k 3.95 / 0.739 / 11,965). HI-only packs HI better but fragments EN. `benchmark.py --eval held_out` -> `data/analysis/tokenizer_metrics_v2.json`. Makefile: `tokenizer-c0`. Tests: `test_prepare_spm_corpus.py`.
+
+- **External legal EN-HI ingest (Gate 9 T0)** (`src/preprocessing/ingest_external_parallel.py`): Downloads/processes MILPaC (Law-AI) and Anuvaad legal EN-HI (judiciary, HC/SUVAS, law commission, names dict, augmented, legal terms). Already-aligned pairs are mapped to project JSONL (`en_text`, `hi_text`, `source`, `doc_id`) and filtered with the same char-length ratio (0.3-3.0) and min-length rules as post-alignment QC; exact pair dedup. Outputs under `data/external/parallel/` including `stage_a_en_hi.jsonl` + `ingest_report.json`. Makefile: `make external-download`, `make external-ingest`. Tests: `tests/preprocessing/test_ingest_external_parallel.py`.
+
+### Changed
+
+- **External Stage A wired through docs/orchestrators:** `configs/preprocessing.yaml` documents `external_ingest` + paths/licenses/filters. `run_pipeline.py` steps/groups: `external_download`, `external_ingest`, groups `external` / `external_full`; `all` includes `external_ingest`. `scripts/reproduce_all.sh` runs Stage A ingest (with `--download` unless `--skip-downloads`). README quick-start and license notes updated.
+
 ### Fixed
 
 - **Docs/orchestrator drift:** Updated README and AGENTS.md to match finished preprocess + tokenizer phases. Rewrote `configs/preprocessing.yaml` for live steps, skipped steps, and alignment thresholds (min sim 0.5, char ratio 0.3-3.0). Fixed `run_pipeline.py` module paths (`src.tokenizer.benchmark`), removed calls to missing `src.evaluation` / `src.training`, and flattened group expansion. Makefile: `all` now uses `tokenizer-train-all`, dropped broken `train`/`eval` targets, alias `tokenizer-train`. `scripts/reproduce_all.sh` no longer calls missing metrics module. DESIGN_DECISIONS renumbered (1-16), tokenizer file names corrected (`benchmark.py` not `analysis.py` / `reproduce_benchmarks.py`), staging path documented as `preprocessed/`. `.gitignore` adds `data/models/`.

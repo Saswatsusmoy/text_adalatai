@@ -4,6 +4,7 @@ End-to-end orchestration of the Adalat AI pipeline steps that exist today.
 Usage:
     python run_pipeline.py --steps all
     python run_pipeline.py --steps preprocess
+    python run_pipeline.py --steps external
     python run_pipeline.py --steps align,output
     python run_pipeline.py --steps tokenizer_bench
 """
@@ -46,6 +47,16 @@ STEPS = {
         "args": [],
         "desc": "Train/dev/test splits + metadata",
     },
+    "external_download": {
+        "module": "src.preprocessing.ingest_external_parallel",
+        "args": ["--download"],
+        "desc": "Download MILPaC + Anuvaad legal EN-HI raw files",
+    },
+    "external_ingest": {
+        "module": "src.preprocessing.ingest_external_parallel",
+        "args": [],
+        "desc": "Ingest external legal EN-HI to Stage A JSONL",
+    },
     "tokenizer_bench": {
         "module": "src.tokenizer.benchmark",
         "args": [],
@@ -61,8 +72,19 @@ STEPS = {
 # Groups expand to step names only (flat). Nested group names are expanded once.
 GROUPS = {
     "preprocess": ["reextract", "join", "segment", "align", "output"],
+    "external": ["external_ingest"],
+    "external_full": ["external_download", "external_ingest"],
     "tokenizer": ["tokenizer_bench"],
-    "all": ["reextract", "join", "segment", "align", "output", "tokenizer_bench"],
+    # assignment preprocess + external Stage A + tokenizer bench
+    "all": [
+        "reextract",
+        "join",
+        "segment",
+        "align",
+        "output",
+        "external_ingest",
+        "tokenizer_bench",
+    ],
 }
 
 
@@ -101,7 +123,10 @@ def main():
     parser.add_argument(
         "--steps",
         default="preprocess",
-        help="Comma-separated steps or group name (preprocess, tokenizer, all)",
+        help=(
+            "Comma-separated steps or group: preprocess, external, external_full, "
+            "tokenizer, all"
+        ),
     )
     args = parser.parse_args()
 

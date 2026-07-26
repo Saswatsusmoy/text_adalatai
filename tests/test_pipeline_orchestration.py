@@ -12,6 +12,7 @@ class TestPipelineImports:
         "src.preprocessing.segment_sentences",
         "src.preprocessing.align_sentences",
         "src.preprocessing.output_format",
+        "src.preprocessing.ingest_external_parallel",
         "src.tokenizer.train",
         "src.tokenizer.benchmark",
     ]
@@ -22,7 +23,8 @@ class TestPipelineImports:
             assert mod is not None, f"Failed to import {mod_name}"
 
     def test_preprocessing_has_run(self):
-        for mod_name in self.modules[:5]:
+        # First 5 preprocessing modules + ingest_external_parallel
+        for mod_name in self.modules[:6]:
             mod = importlib.import_module(mod_name)
             assert hasattr(mod, "run"), f"{mod_name} missing run()"
 
@@ -48,3 +50,11 @@ class TestRunPipelineRegistry:
             "align",
             "output",
         ]
+
+    def test_external_group(self):
+        assert run_pipeline.expand_steps(["external"]) == ["external_ingest"]
+        assert run_pipeline.expand_steps(["external_full"]) == [
+            "external_download",
+            "external_ingest",
+        ]
+        assert "external_ingest" in run_pipeline.expand_steps(["all"])

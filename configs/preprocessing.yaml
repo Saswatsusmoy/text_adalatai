@@ -1,5 +1,6 @@
-# Declares the live preprocessing pipeline (what run_pipeline / make preprocess runs).
-# Skipped original-plan steps are listed under skipped for audit only.
+# Declares the live pipelines (what run_pipeline / make targets run).
+# Assignment path: PDF -> aligned pairs -> train/dev/test.
+# External Stage A path: already-aligned MILPaC + Anuvaad legal EN-HI.
 
 pipeline:
   steps:
@@ -41,6 +42,13 @@ pipeline:
       input: data/aligned/all.jsonl
       output: data/processed/
 
+    - id: external_ingest
+      module: src.preprocessing.ingest_external_parallel
+      description: "Ingest MILPaC + Anuvaad legal EN-HI (length filter, no LaBSE re-score)"
+      input: data/external/raw/
+      output: data/external/parallel/
+      note: "Already-aligned bitext; not part of make preprocess"
+
   skipped:
     - name: strip_utf8_bom
       reason: "preprocessed Hindi has no BOM; pipeline never reads BOM-bearing clean/ as source of truth"
@@ -50,6 +58,8 @@ pipeline:
       reason: "zero li./lili. artifacts in corpus; naive fix false-positives on legal L."
     - name: paragraph_segmentation
       reason: "blank lines already separate paragraphs after join/OCR"
+    - name: external_labse_rescore
+      reason: "Anuvaad ~800k+ lines; length filter only; assignment corpus keeps LaBSE path"
 
 paths:
   data_dir: data/
@@ -63,8 +73,12 @@ paths:
   hindi_segmented: data/hindi/segmented/
   aligned: data/aligned/
   processed: data/processed/
+  external_raw: data/external/raw/
+  external_parallel: data/external/parallel/
+  external_stage_a: data/external/parallel/stage_a_en_hi.jsonl
 
 # Must match constants in src/preprocessing/align_sentences.py
+# (external ingest reuses char_ratio + min_text_length; no similarity)
 alignment:
   model: sentence-transformers/LaBSE
   method: mutual_best_greedy
@@ -73,6 +87,26 @@ alignment:
   char_ratio_max: 3.0
   min_text_length: 3
   dedup_jaccard: 0.85
+
+external:
+  sources:
+    - milpac
+    - anuvaad_judiciary
+    - anuvaad_hc_suvas
+    - anuvaad_law_commission
+    - anuvaad_names_dict
+    - anuvaad_augmented
+    - anuvaad_legal_terms
+  filters:
+    char_ratio_min: 0.3
+    char_ratio_max: 3.0
+    min_text_length: 3
+    exact_dedup: true
+    labse: false
+  licenses:
+    milpac: "CC BY-NC-SA 4.0"
+    anuvaad: "CC BY 4.0"
+  role: "Stage A domain FT only; assignment test docs stay frozen"
 
 # Must match src/preprocessing/output_format.py
 splits:
