@@ -26,6 +26,11 @@
 - **Test suite** (`tests/preprocessing/test_align_sentences.py`): 18 tests covering loading, filtering, dedup, output format, and quality checks.
 
 - **Final output format** (`src/preprocessing/output_format.py`): Splits 1,458 aligned pairs into train (1,136), dev (132), and test (190) at document level. Generates `metadata.json` and `alignment_report.json`. Output in `data/processed/`.
+- **Proper noun discovery script** (`src/preprocessing/discover_proper_nouns.py`): Data-driven discovery of legal proper nouns for line joining. Scans all 30 English clean files for words appearing at continuation line starts. Derives 34 verified proper nouns with zero guessing.
+- **Tokenizer analysis framework** (`src/tokenizer/analysis.py`, `deep_dive.py`): Full corpus benchmark of 17 tokenizers across 14 model families (2024-2026): Custom SP 41K, Gemma 4, GPT-4o, Phi-4-mini, NLLB-200, Mistral Small 4, Qwen3/3.5/3.6, MiniMax M3, DeepSeek V3/V4 Pro, GLM 5.2, Phi-4, OLMo 3. Measures chars/token, HI/EN ratio, byte fallback detection. Finds that SentencePiece and multilingual BPE handle Hindi well, while byte-level BPE (all Llama-family models) cost 1.1-2.7x more tokens for Hindi regardless of vocabulary size. See DESIGN_DECISIONS.md for full comparison.
+- **Custom SentencePiece tokenizer** (`data/models/tokenizers/`): Trained 3 SentencePiece models (16K/32K/41K vocab) on 14M characters of Indian legal Hindi text from Prarabdha/indian-legal-supervised-fine-tuning-data (`src/tokenizer/prepare_corpus.py` outputs to `data/external/legal_hindi_corpus.txt`, gitignored). The 41K model achieves 16,840 Devanagari tokens, 3.84 HI chars/tok, and 0.743 HI/EN ratio -- beating Gemma 4 on Hindi efficiency despite 6x smaller vocabulary. Training fully reproducible via `make tokenizer-train-all`.
+- **Tokenizer benchmarks reproduction** (`src/tokenizer/reproduce_benchmarks.py`): Standalone script that benchmarks all accessible tokenizers and saves results to `data/analysis/tokenizer_metrics.json`.
+- **Reproducible pipeline**: `Makefile` with targets (`make preprocess`, `make tokenizer-train-all`, `make tokenizer-bench`, `make test`). `run_pipeline.py` Python orchestrator. `scripts/reproduce_all.sh` bash reproduction script. `requirements.txt` with pinned dependencies.
 
 ### Fixed
 
@@ -36,9 +41,15 @@
 - **Doc 17 PDF text layer**: `pdftotext` produces transliterated output (`Ekkuuh;` instead of `माननीय`). Tesseract OCR handles it correctly  --  not an issue.
 - **PDF vs clean file mismatch**: The original clean files contain only numbered body paragraphs, while PDFs contain full judgments (headers, citations, parties, body). The 25 non-corrupted clean files are a subset of the full document. Our Tesseract extraction captures the complete document.
 
+### Project structure
+
+- **Phase-based organization**: `src/preprocessing/` (Phase 1), `src/tokenizer/` (Phase 2) -- only completed phases exist. No future-phase scaffolding.
+- **Everything scripted, nothing interactive**: All analyses moved from ad-hoc commands to reproducible scripts with `if __name__ == "__main__"` entry points.
+- **104 tests**: Covering preprocessing, tokenizer, and pipeline orchestration. Each phase has its own test directory.
+
 ### Skipped (not needed for this corpus)
 
-- **Strip UTF-8 BOM (original plan Step 2)**: 25/30 Hindi clean files have BOM, but our working directory `data/hindi/preprocessed/` has 0 BOM files. Pipeline operates on preprocessed/ so this step is unnecessary. See DESIGN_DECISIONS.md for evidence.
+- **Strip UTF-8 BOM (original plan Step 2)**: 25/30 Hindi clean files have BOM, but the working directory `data/hindi/preprocessed/` has 0 BOM files. Pipeline operates on preprocessed/ so this step is unnecessary. See DESIGN_DECISIONS.md for evidence.
 - **Fix OCR Roman numerals (original plan Step 5)**: Zero instances of `li.`/`lili.` OCR artifacts found in any English clean file or raw PDF extraction. All `L.` instances are legitimate legal abbreviations. See DESIGN_DECISIONS.md for evidence.
 - **Normalize line endings (original plan Step 3)**: `data/hindi/preprocessed/` is already 100% LF (30/30 files). The 25 CRLF files are legacy `clean/` files that don't reach the pipeline. See DESIGN_DECISIONS.md for evidence.
 - **Paragraph segmentation (original plan Step 6)**: Already satisfied by Steps 1 and 4. Both English joined (782 paras) and Hindi OCR (951 paras) already have clear paragraph structure via blank lines. No additional processing needed. See DESIGN_DECISIONS.md for evidence.

@@ -1,0 +1,1028 @@
+{
+  "title": "Tokenizer Analysis for English-Hindi Legal Text",
+  "sections": [
+    {
+      "title": "Byte Fallback Analysis",
+      "finding": "GPT-4o/cl100k tokenizer has only merged 13% of Devanagari characters (128 total) into single tokens. The remaining 87% are encoded as 2-3 byte-level tokens each. This is because Devanagari characters are rare in the training data and the BPE merge algorithm never learned to merge their UTF-8 byte sequences.",
+      "details": {
+        "token_count_distribution": {
+          "2": 111,
+          "1": 17
+        },
+        "merged_single_token": [
+          {
+            "char": "ं",
+            "cp": "U+0902",
+            "utf8": "e0a482",
+            "token_id": 73414
+          },
+          {
+            "char": "क",
+            "cp": "U+0915",
+            "utf8": "e0a495",
+            "token_id": 65804
+          },
+          {
+            "char": "त",
+            "cp": "U+0924",
+            "utf8": "e0a4a4",
+            "token_id": 80338
+          },
+          {
+            "char": "न",
+            "cp": "U+0928",
+            "utf8": "e0a4a8",
+            "token_id": 61196
+          },
+          {
+            "char": "प",
+            "cp": "U+092A",
+            "utf8": "e0a4aa",
+            "token_id": 87262
+          },
+          {
+            "char": "म",
+            "cp": "U+092E",
+            "utf8": "e0a4ae",
+            "token_id": 88344
+          },
+          {
+            "char": "र",
+            "cp": "U+0930",
+            "utf8": "e0a4b0",
+            "token_id": 45279
+          },
+          {
+            "char": "ल",
+            "cp": "U+0932",
+            "utf8": "e0a4b2",
+            "token_id": 92911
+          },
+          {
+            "char": "स",
+            "cp": "U+0938",
+            "utf8": "e0a4b8",
+            "token_id": 79468
+          },
+          {
+            "char": "ह",
+            "cp": "U+0939",
+            "utf8": "e0a4b9",
+            "token_id": 95048
+          },
+          {
+            "char": "ा",
+            "cp": "U+093E",
+            "utf8": "e0a4be",
+            "token_id": 24810
+          },
+          {
+            "char": "ि",
+            "cp": "U+093F",
+            "utf8": "e0a4bf",
+            "token_id": 39951
+          },
+          {
+            "char": "ी",
+            "cp": "U+0940",
+            "utf8": "e0a580",
+            "token_id": 44747
+          },
+          {
+            "char": "ु",
+            "cp": "U+0941",
+            "utf8": "e0a581",
+            "token_id": 73753
+          },
+          {
+            "char": "े",
+            "cp": "U+0947",
+            "utf8": "e0a587",
+            "token_id": 35470
+          },
+          {
+            "char": "ो",
+            "cp": "U+094B",
+            "utf8": "e0a58b",
+            "token_id": 55675
+          },
+          {
+            "char": "्",
+            "cp": "U+094D",
+            "utf8": "e0a58d",
+            "token_id": 30707
+          }
+        ],
+        "byte_level_split": [
+          {
+            "char": "ऀ",
+            "cp": "U+0900",
+            "utf8": "e0a480",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 222
+          },
+          {
+            "char": "ँ",
+            "cp": "U+0901",
+            "utf8": "e0a481",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 223
+          },
+          {
+            "char": "ः",
+            "cp": "U+0903",
+            "utf8": "e0a483",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 225
+          },
+          {
+            "char": "ऄ",
+            "cp": "U+0904",
+            "utf8": "e0a484",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 226
+          },
+          {
+            "char": "अ",
+            "cp": "U+0905",
+            "utf8": "e0a485",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 227
+          },
+          {
+            "char": "आ",
+            "cp": "U+0906",
+            "utf8": "e0a486",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 228
+          },
+          {
+            "char": "इ",
+            "cp": "U+0907",
+            "utf8": "e0a487",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 229
+          },
+          {
+            "char": "ई",
+            "cp": "U+0908",
+            "utf8": "e0a488",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 230
+          },
+          {
+            "char": "उ",
+            "cp": "U+0909",
+            "utf8": "e0a489",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 231
+          },
+          {
+            "char": "ऊ",
+            "cp": "U+090A",
+            "utf8": "e0a48a",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 232
+          },
+          {
+            "char": "ऋ",
+            "cp": "U+090B",
+            "utf8": "e0a48b",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 233
+          },
+          {
+            "char": "ऌ",
+            "cp": "U+090C",
+            "utf8": "e0a48c",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 234
+          },
+          {
+            "char": "ऍ",
+            "cp": "U+090D",
+            "utf8": "e0a48d",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 235
+          },
+          {
+            "char": "ऎ",
+            "cp": "U+090E",
+            "utf8": "e0a48e",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 236
+          },
+          {
+            "char": "ए",
+            "cp": "U+090F",
+            "utf8": "e0a48f",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 237
+          },
+          {
+            "char": "ऐ",
+            "cp": "U+0910",
+            "utf8": "e0a490",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 238
+          },
+          {
+            "char": "ऑ",
+            "cp": "U+0911",
+            "utf8": "e0a491",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 239
+          },
+          {
+            "char": "ऒ",
+            "cp": "U+0912",
+            "utf8": "e0a492",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 240
+          },
+          {
+            "char": "ओ",
+            "cp": "U+0913",
+            "utf8": "e0a493",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 241
+          },
+          {
+            "char": "औ",
+            "cp": "U+0914",
+            "utf8": "e0a494",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 242
+          },
+          {
+            "char": "ख",
+            "cp": "U+0916",
+            "utf8": "e0a496",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 244
+          },
+          {
+            "char": "ग",
+            "cp": "U+0917",
+            "utf8": "e0a497",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 245
+          },
+          {
+            "char": "घ",
+            "cp": "U+0918",
+            "utf8": "e0a498",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 246
+          },
+          {
+            "char": "ङ",
+            "cp": "U+0919",
+            "utf8": "e0a499",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 247
+          },
+          {
+            "char": "च",
+            "cp": "U+091A",
+            "utf8": "e0a49a",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 248
+          },
+          {
+            "char": "छ",
+            "cp": "U+091B",
+            "utf8": "e0a49b",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 249
+          },
+          {
+            "char": "ज",
+            "cp": "U+091C",
+            "utf8": "e0a49c",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 250
+          },
+          {
+            "char": "झ",
+            "cp": "U+091D",
+            "utf8": "e0a49d",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 251
+          },
+          {
+            "char": "ञ",
+            "cp": "U+091E",
+            "utf8": "e0a49e",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 252
+          },
+          {
+            "char": "ट",
+            "cp": "U+091F",
+            "utf8": "e0a49f",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 253
+          },
+          {
+            "char": "ठ",
+            "cp": "U+0920",
+            "utf8": "e0a4a0",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 254
+          },
+          {
+            "char": "ड",
+            "cp": "U+0921",
+            "utf8": "e0a4a1",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 94
+          },
+          {
+            "char": "ढ",
+            "cp": "U+0922",
+            "utf8": "e0a4a2",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 95
+          },
+          {
+            "char": "ण",
+            "cp": "U+0923",
+            "utf8": "e0a4a3",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 96
+          },
+          {
+            "char": "थ",
+            "cp": "U+0925",
+            "utf8": "e0a4a5",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 98
+          },
+          {
+            "char": "द",
+            "cp": "U+0926",
+            "utf8": "e0a4a6",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 99
+          },
+          {
+            "char": "ध",
+            "cp": "U+0927",
+            "utf8": "e0a4a7",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 100
+          },
+          {
+            "char": "ऩ",
+            "cp": "U+0929",
+            "utf8": "e0a4a9",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 102
+          },
+          {
+            "char": "फ",
+            "cp": "U+092B",
+            "utf8": "e0a4ab",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 104
+          },
+          {
+            "char": "ब",
+            "cp": "U+092C",
+            "utf8": "e0a4ac",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 105
+          },
+          {
+            "char": "भ",
+            "cp": "U+092D",
+            "utf8": "e0a4ad",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 255
+          },
+          {
+            "char": "य",
+            "cp": "U+092F",
+            "utf8": "e0a4af",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 107
+          },
+          {
+            "char": "ऱ",
+            "cp": "U+0931",
+            "utf8": "e0a4b1",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 109
+          },
+          {
+            "char": "ळ",
+            "cp": "U+0933",
+            "utf8": "e0a4b3",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 111
+          },
+          {
+            "char": "ऴ",
+            "cp": "U+0934",
+            "utf8": "e0a4b4",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 112
+          },
+          {
+            "char": "व",
+            "cp": "U+0935",
+            "utf8": "e0a4b5",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 113
+          },
+          {
+            "char": "श",
+            "cp": "U+0936",
+            "utf8": "e0a4b6",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 114
+          },
+          {
+            "char": "ष",
+            "cp": "U+0937",
+            "utf8": "e0a4b7",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 115
+          },
+          {
+            "char": "ऺ",
+            "cp": "U+093A",
+            "utf8": "e0a4ba",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 118
+          },
+          {
+            "char": "ऻ",
+            "cp": "U+093B",
+            "utf8": "e0a4bb",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 119
+          },
+          {
+            "char": "़",
+            "cp": "U+093C",
+            "utf8": "e0a4bc",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 120
+          },
+          {
+            "char": "ऽ",
+            "cp": "U+093D",
+            "utf8": "e0a4bd",
+            "num_tokens": 2,
+            "first_byte_token": 5619,
+            "second_byte_token": 121
+          },
+          {
+            "char": "ू",
+            "cp": "U+0942",
+            "utf8": "e0a582",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 224
+          },
+          {
+            "char": "ृ",
+            "cp": "U+0943",
+            "utf8": "e0a583",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 225
+          },
+          {
+            "char": "ॄ",
+            "cp": "U+0944",
+            "utf8": "e0a584",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 226
+          },
+          {
+            "char": "ॅ",
+            "cp": "U+0945",
+            "utf8": "e0a585",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 227
+          },
+          {
+            "char": "ॆ",
+            "cp": "U+0946",
+            "utf8": "e0a586",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 228
+          },
+          {
+            "char": "ै",
+            "cp": "U+0948",
+            "utf8": "e0a588",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 230
+          },
+          {
+            "char": "ॉ",
+            "cp": "U+0949",
+            "utf8": "e0a589",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 231
+          },
+          {
+            "char": "ॊ",
+            "cp": "U+094A",
+            "utf8": "e0a58a",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 232
+          },
+          {
+            "char": "ौ",
+            "cp": "U+094C",
+            "utf8": "e0a58c",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 234
+          },
+          {
+            "char": "ॎ",
+            "cp": "U+094E",
+            "utf8": "e0a58e",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 236
+          },
+          {
+            "char": "ॏ",
+            "cp": "U+094F",
+            "utf8": "e0a58f",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 237
+          },
+          {
+            "char": "ॐ",
+            "cp": "U+0950",
+            "utf8": "e0a590",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 238
+          },
+          {
+            "char": "॑",
+            "cp": "U+0951",
+            "utf8": "e0a591",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 239
+          },
+          {
+            "char": "॒",
+            "cp": "U+0952",
+            "utf8": "e0a592",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 240
+          },
+          {
+            "char": "॓",
+            "cp": "U+0953",
+            "utf8": "e0a593",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 241
+          },
+          {
+            "char": "॔",
+            "cp": "U+0954",
+            "utf8": "e0a594",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 242
+          },
+          {
+            "char": "ॕ",
+            "cp": "U+0955",
+            "utf8": "e0a595",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 243
+          },
+          {
+            "char": "ॖ",
+            "cp": "U+0956",
+            "utf8": "e0a596",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 244
+          },
+          {
+            "char": "ॗ",
+            "cp": "U+0957",
+            "utf8": "e0a597",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 245
+          },
+          {
+            "char": "क़",
+            "cp": "U+0958",
+            "utf8": "e0a598",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 246
+          },
+          {
+            "char": "ख़",
+            "cp": "U+0959",
+            "utf8": "e0a599",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 247
+          },
+          {
+            "char": "ग़",
+            "cp": "U+095A",
+            "utf8": "e0a59a",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 248
+          },
+          {
+            "char": "ज़",
+            "cp": "U+095B",
+            "utf8": "e0a59b",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 249
+          },
+          {
+            "char": "ड़",
+            "cp": "U+095C",
+            "utf8": "e0a59c",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 250
+          },
+          {
+            "char": "ढ़",
+            "cp": "U+095D",
+            "utf8": "e0a59d",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 251
+          },
+          {
+            "char": "फ़",
+            "cp": "U+095E",
+            "utf8": "e0a59e",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 252
+          },
+          {
+            "char": "य़",
+            "cp": "U+095F",
+            "utf8": "e0a59f",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 253
+          },
+          {
+            "char": "ॠ",
+            "cp": "U+0960",
+            "utf8": "e0a5a0",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 254
+          },
+          {
+            "char": "ॡ",
+            "cp": "U+0961",
+            "utf8": "e0a5a1",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 94
+          },
+          {
+            "char": "ॢ",
+            "cp": "U+0962",
+            "utf8": "e0a5a2",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 95
+          },
+          {
+            "char": "ॣ",
+            "cp": "U+0963",
+            "utf8": "e0a5a3",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 96
+          },
+          {
+            "char": "।",
+            "cp": "U+0964",
+            "utf8": "e0a5a4",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 97
+          },
+          {
+            "char": "॥",
+            "cp": "U+0965",
+            "utf8": "e0a5a5",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 98
+          },
+          {
+            "char": "०",
+            "cp": "U+0966",
+            "utf8": "e0a5a6",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 99
+          },
+          {
+            "char": "१",
+            "cp": "U+0967",
+            "utf8": "e0a5a7",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 100
+          },
+          {
+            "char": "२",
+            "cp": "U+0968",
+            "utf8": "e0a5a8",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 101
+          },
+          {
+            "char": "३",
+            "cp": "U+0969",
+            "utf8": "e0a5a9",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 102
+          },
+          {
+            "char": "४",
+            "cp": "U+096A",
+            "utf8": "e0a5aa",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 103
+          },
+          {
+            "char": "५",
+            "cp": "U+096B",
+            "utf8": "e0a5ab",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 104
+          },
+          {
+            "char": "६",
+            "cp": "U+096C",
+            "utf8": "e0a5ac",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 105
+          },
+          {
+            "char": "७",
+            "cp": "U+096D",
+            "utf8": "e0a5ad",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 255
+          },
+          {
+            "char": "८",
+            "cp": "U+096E",
+            "utf8": "e0a5ae",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 106
+          },
+          {
+            "char": "९",
+            "cp": "U+096F",
+            "utf8": "e0a5af",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 107
+          },
+          {
+            "char": "॰",
+            "cp": "U+0970",
+            "utf8": "e0a5b0",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 108
+          },
+          {
+            "char": "ॱ",
+            "cp": "U+0971",
+            "utf8": "e0a5b1",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 109
+          },
+          {
+            "char": "ॲ",
+            "cp": "U+0972",
+            "utf8": "e0a5b2",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 110
+          },
+          {
+            "char": "ॳ",
+            "cp": "U+0973",
+            "utf8": "e0a5b3",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 111
+          },
+          {
+            "char": "ॴ",
+            "cp": "U+0974",
+            "utf8": "e0a5b4",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 112
+          },
+          {
+            "char": "ॵ",
+            "cp": "U+0975",
+            "utf8": "e0a5b5",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 113
+          },
+          {
+            "char": "ॶ",
+            "cp": "U+0976",
+            "utf8": "e0a5b6",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 114
+          },
+          {
+            "char": "ॷ",
+            "cp": "U+0977",
+            "utf8": "e0a5b7",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 115
+          },
+          {
+            "char": "ॸ",
+            "cp": "U+0978",
+            "utf8": "e0a5b8",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 116
+          },
+          {
+            "char": "ॹ",
+            "cp": "U+0979",
+            "utf8": "e0a5b9",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 117
+          },
+          {
+            "char": "ॺ",
+            "cp": "U+097A",
+            "utf8": "e0a5ba",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 118
+          },
+          {
+            "char": "ॻ",
+            "cp": "U+097B",
+            "utf8": "e0a5bb",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 119
+          },
+          {
+            "char": "ॼ",
+            "cp": "U+097C",
+            "utf8": "e0a5bc",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 120
+          },
+          {
+            "char": "ॽ",
+            "cp": "U+097D",
+            "utf8": "e0a5bd",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 121
+          },
+          {
+            "char": "ॾ",
+            "cp": "U+097E",
+            "utf8": "e0a5be",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 122
+          },
+          {
+            "char": "ॿ",
+            "cp": "U+097F",
+            "utf8": "e0a5bf",
+            "num_tokens": 2,
+            "first_byte_token": 12906,
+            "second_byte_token": 123
+          }
+        ],
+        "merge_rate": 13.28125,
+        "byte_rate": 86.71875
+      }
+    },
+    {
+      "title": "Token Efficiency Comparison",
+      "finding": "For Hindi text, GPT-4o requires ~1.1 tokens per Devanagari character on average (since each character is 2-3 UTF-8 bytes, and byte-level BPE merges some but not all byte pairs). NLLB requires ~0.3 tokens per character because it has Devanagari subwords in its 256K vocabulary. This creates a 3.7x difference in token efficiency for Hindi text.",
+      "details": {
+        "devanagari_utf8_bytes_per_char": 3,
+        "ascii_bytes_per_char": 1,
+        "theoretical_min_tokens_for_devanagari_char": 1,
+        "theoretical_max_tokens_for_devanagari_char": 3,
+        "cl100k_actual_tokens_per_devanagari_char": 1.1,
+        "nllb_actual_tokens_per_devanagari_char": 0.3
+      }
+    },
+    {
+      "title": "Impact on Training",
+      "finding": "The HI/EN token ratio directly affects training cost and effective context length. With GPT-4o/cl100k, a Hindi sentence uses ~3x more tokens than the same English sentence. This means: (1) training on Hindi costs 3x more in compute, (2) effective context length for Hindi is 3x shorter, (3) batch processing is less efficient. NLLB and custom Indic-optimized tokenizers avoid this penalty.",
+      "details": {}
+    }
+  ]
+}
