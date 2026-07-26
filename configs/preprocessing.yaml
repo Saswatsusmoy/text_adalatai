@@ -1,0 +1,61 @@
+pipeline:
+  steps:
+    - id: 1
+      name: reextract_corrupted_pdfs
+      description: "Re-extract corrupted Hindi PDFs (Docs 6, 14, 22, 25, 26)"
+      input: data/hindi/original/
+      output: data/hindi/re_extracted/
+      tool: tesseract
+      corrupted_docs: [6, 14, 22, 25, 26]
+
+    - id: 2
+      name: strip_utf8_bom
+      description: "Strip UTF-8 BOM from Hindi files"
+
+    - id: 3
+      name: normalize_line_endings
+      description: "Normalize CRLF -> LF line endings"
+
+    - id: 4
+      name: intelligent_line_joining
+      description: "Join hard-wrapped lines in English docs"
+
+    - id: 5
+      name: fix_ocr_artifacts
+      description: "Fix OCR Roman numerals (li. -> ii, lili. -> iii)"
+
+    - id: 6
+      name: paragraph_segmentation
+      description: "Segment text into paragraphs"
+
+    - id: 7
+      name: sentence_segmentation
+      description: "Segment paragraphs into sentences"
+
+    - id: 8
+      name: quality_filters
+      description: "Filter low-quality sentence pairs after alignment"
+
+    - id: 9
+      name: doc_tracking
+      description: "Track doc_id through every step"
+
+    - id: 10
+      name: output_format
+      description: "Write train/dev/test JSONL files"
+
+paths:
+  data_dir: data/
+  english_original: data/english/original/
+  english_clean: data/english/clean/
+  hindi_original: data/hindi/original/
+  hindi_clean: data/hindi/clean/
+  hindi_preprocessed: data/hindi/preprocessed/
+  processed: data/processed/
+
+validation:
+  devanagari:
+    start_unicode: "U+0900"
+    end_unicode: "U+097F"
+    min_chars: 1
+    hindi_threshold: 0.3

@@ -1,6 +1,4 @@
-# Local-only notes, plans, research (never commit)
-.local/
-.local/**
+# Local-only notes, plans, research (never commit) - use .git/info/exclude
 
 # OS
 .DS_Store

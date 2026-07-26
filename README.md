@@ -1,9 +1,9 @@
-# Adalat AI — Legal EN→HI Translation Assignment
+# Adalat AI  --  Legal EN->HI Translation Assignment
 
-Prototype text-translation system for **Indian court judgments** (English → Hindi), with focus on:
+Prototype text-translation system for **Indian court judgments** (English -> Hindi), with focus on:
 
-1. **Token efficiency** for Indic scripts under LLMs / NMT tokenizers  
-2. **Light domain adaptation** for high-fidelity legal translation  
+1. **Token efficiency** for Indic scripts under LLMs / NMT tokenizers
+2. **Light domain adaptation** for high-fidelity legal translation
 
 ## Repository layout
 
@@ -15,7 +15,7 @@ report/         # Assignment write-up
 tests/          # Smoke / E2E tests
 ```
 
-Private plans, research notes, and learning materials live in **`.local/`** (gitignored — never commit).
+Private plans, research notes, and learning materials live in **`.local/`** (gitignored  --  never commit).
 
 ## Status
 
