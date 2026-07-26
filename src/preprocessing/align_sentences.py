@@ -2,10 +2,11 @@
 Align English and Hindi sentences within each document using LaBSE embeddings,
 then apply quality filters. Produces sentence-aligned parallel data as JSONL.
 
-Uses dynamic programming for alignment (1-1, 1-many, many-1, many-many),
-then filters by length ratio and LaBSE similarity threshold.
+Uses mutual-best greedy matching (not DP): keep an EN-HI pair only when each
+side is the other's nearest neighbor and similarity meets the threshold, then
+apply length-ratio and near-dedup filters.
 
-Output: data/aligned/all.jsonl (all pairs with doc_id and scores)
+Output: data/aligned/all.jsonl (pairs with doc_id and scores)
 """
 
 import json

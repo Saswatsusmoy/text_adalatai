@@ -1,4 +1,6 @@
-.PHONY: install preprocess align tokenize test clean
+.PHONY: install venv reextract join segment align output preprocess \
+	tokenizer-prepare tokenizer-train-16k tokenizer-train-32k tokenizer-train-41k \
+	tokenizer-train-all tokenizer-train tokenizer-bench test test-all clean clean-data all
 
 # --- Setup ---
 
@@ -13,38 +15,30 @@ venv:
 
 # --- Preprocessing pipeline ---
 
-# Step 1: Re-extract corrupted Hindi PDFs
 reextract:
 	PYTHONPATH=. python3 src/preprocessing/reextract_pdfs.py --all
 	PYTHONPATH=. python3 src/preprocessing/reextract_pdfs.py --compare-all
 
-# Step 4: Join hard-wrapped English lines
 join:
 	PYTHONPATH=. python3 src/preprocessing/join_lines.py
 
-# Step 7: Sentence segmentation
 segment:
 	PYTHONPATH=. python3 src/preprocessing/segment_sentences.py
 
-# Step 8: Alignment + quality filters
 align:
 	PYTHONPATH=. python3 src/preprocessing/align_sentences.py
 
-# Step 10: Output train/dev/test splits
 output:
 	PYTHONPATH=. python3 src/preprocessing/output_format.py
 
-# Full preprocessing pipeline
 preprocess: reextract join segment align output
 	@echo "Preprocessing complete"
 
 # --- Tokenizer ---
 
-# Download and prepare Hindi legal corpus for tokenizer training
 tokenizer-prepare:
 	PYTHONPATH=. python3 src/tokenizer/prepare_corpus.py
 
-# Train custom SentencePiece tokenizers at multiple vocab sizes
 tokenizer-train-16k: tokenizer-prepare
 	PYTHONPATH=. python3 src/tokenizer/train.py \
 		--input data/external/legal_hindi_corpus.txt \
@@ -60,22 +54,13 @@ tokenizer-train-41k:
 		--input data/external/legal_hindi_corpus.txt \
 		--vocab-size 41000
 
-# Train all tokenizer variants
 tokenizer-train-all: tokenizer-train-16k tokenizer-train-32k tokenizer-train-41k
 
-# Benchmark all tokenizers on the aligned corpus
+# Alias used by reproduce docs / older notes
+tokenizer-train: tokenizer-train-all
+
 tokenizer-bench:
 	PYTHONPATH=. python3 src/tokenizer/benchmark.py
-
-# --- Training (scaffold) ---
-
-train:
-	PYTHONPATH=. python3 src/training/train.py
-
-# --- Evaluation ---
-
-eval:
-	PYTHONPATH=. python3 src/evaluation/metrics.py --jsonl data/aligned/all.jsonl
 
 # --- Tests ---
 
@@ -96,6 +81,7 @@ clean-data:
 
 # --- Reproducibility ---
 
-# Full end-to-end: install -> preprocess -> tokenizer -> test
-all: install preprocess tokenizer-train tokenizer-bench test
+# install -> preprocess -> custom SP train -> bench -> test
+# Tokenizer train needs network for external corpus unless already under data/external/
+all: install preprocess tokenizer-train-all tokenizer-bench test
 	@echo "Full pipeline complete"

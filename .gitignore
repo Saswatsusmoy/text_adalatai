@@ -50,9 +50,10 @@ mlruns/
 *.onnx
 *.gguf
 
-# Processed data caches (keep source data/ tracked unless huge)
+# Processed / regeneratable data caches (keep source PDFs + clean text tracked)
 data/processed/
 data/external/
+data/models/
 *.arrow
 *.parquet
 

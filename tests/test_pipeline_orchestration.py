@@ -2,6 +2,8 @@
 
 import importlib
 
+import run_pipeline
+
 
 class TestPipelineImports:
     modules = [
@@ -12,8 +14,6 @@ class TestPipelineImports:
         "src.preprocessing.output_format",
         "src.tokenizer.train",
         "src.tokenizer.benchmark",
-        # "src.evaluation.metrics",    # Phase 4 (not started)
-        # "src.training.train",         # Phase 3 (not started)
     ]
 
     def test_all_modules_importable(self):
@@ -25,3 +25,26 @@ class TestPipelineImports:
         for mod_name in self.modules[:5]:
             mod = importlib.import_module(mod_name)
             assert hasattr(mod, "run"), f"{mod_name} missing run()"
+
+
+class TestRunPipelineRegistry:
+    def test_all_registered_modules_exist(self):
+        for name, step in run_pipeline.STEPS.items():
+            mod = importlib.import_module(step["module"])
+            assert mod is not None, f"step {name} module missing: {step['module']}"
+
+    def test_groups_expand_to_known_steps_only(self):
+        for group, members in run_pipeline.GROUPS.items():
+            expanded = run_pipeline.expand_steps([group])
+            assert expanded, f"empty expansion for {group}"
+            for step in expanded:
+                assert step in run_pipeline.STEPS, f"{group} yields unknown step {step}"
+
+    def test_preprocess_group_order(self):
+        assert run_pipeline.expand_steps(["preprocess"]) == [
+            "reextract",
+            "join",
+            "segment",
+            "align",
+            "output",
+        ]

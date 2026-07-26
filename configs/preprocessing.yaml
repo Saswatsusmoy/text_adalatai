@@ -1,57 +1,86 @@
+# Declares the live preprocessing pipeline (what run_pipeline / make preprocess runs).
+# Skipped original-plan steps are listed under skipped for audit only.
+
 pipeline:
   steps:
-    - id: 1
-      name: reextract_corrupted_pdfs
-      description: "Re-extract corrupted Hindi PDFs (Docs 6, 14, 22, 25, 26)"
+    - id: reextract
+      module: src.preprocessing.reextract_pdfs
+      description: "Re-extract Hindi PDFs with Tesseract OCR (default) or pdftotext"
       input: data/hindi/original/
-      output: data/hindi/re_extracted/
+      output: data/hindi/preprocessed/
       tool: tesseract
       corrupted_docs: [6, 14, 22, 25, 26]
 
-    - id: 2
-      name: strip_utf8_bom
-      description: "Strip UTF-8 BOM from Hindi files"
+    - id: join
+      module: src.preprocessing.join_lines
+      description: "Join hard-wrapped lines in English clean docs"
+      input: data/english/clean/
+      output: data/english/preprocessed/
 
-    - id: 3
-      name: normalize_line_endings
-      description: "Normalize CRLF -> LF line endings"
+    - id: segment
+      module: src.preprocessing.segment_sentences
+      description: "Sentence segmentation (spaCy EN, danda HI)"
+      input:
+        english: data/english/preprocessed/
+        hindi: data/hindi/preprocessed/
+      output:
+        english: data/english/segmented/
+        hindi: data/hindi/segmented/
 
-    - id: 4
-      name: intelligent_line_joining
-      description: "Join hard-wrapped lines in English docs"
+    - id: align
+      module: src.preprocessing.align_sentences
+      description: "LaBSE mutual-best alignment + quality filters"
+      input:
+        english: data/english/segmented/
+        hindi: data/hindi/segmented/
+      output: data/aligned/all.jsonl
 
-    - id: 5
-      name: fix_ocr_artifacts
-      description: "Fix OCR Roman numerals (li. -> ii, lili. -> iii)"
+    - id: output
+      module: src.preprocessing.output_format
+      description: "Document-level train/dev/test JSONL + metadata"
+      input: data/aligned/all.jsonl
+      output: data/processed/
 
-    - id: 6
-      name: paragraph_segmentation
-      description: "Segment text into paragraphs"
-
-    - id: 7
-      name: sentence_segmentation
-      description: "Segment paragraphs into sentences"
-
-    - id: 8
-      name: quality_filters
-      description: "Filter low-quality sentence pairs after alignment"
-
-    - id: 9
-      name: doc_tracking
-      description: "Track doc_id through every step"
-
-    - id: 10
-      name: output_format
-      description: "Write train/dev/test JSONL files"
+  skipped:
+    - name: strip_utf8_bom
+      reason: "preprocessed Hindi has no BOM; pipeline never reads BOM-bearing clean/ as source of truth"
+    - name: normalize_line_endings
+      reason: "preprocessed is LF-only; Python text mode normalizes CRLF on read"
+    - name: fix_ocr_roman_numerals
+      reason: "zero li./lili. artifacts in corpus; naive fix false-positives on legal L."
+    - name: paragraph_segmentation
+      reason: "blank lines already separate paragraphs after join/OCR"
 
 paths:
   data_dir: data/
   english_original: data/english/original/
   english_clean: data/english/clean/
+  english_preprocessed: data/english/preprocessed/
+  english_segmented: data/english/segmented/
   hindi_original: data/hindi/original/
   hindi_clean: data/hindi/clean/
   hindi_preprocessed: data/hindi/preprocessed/
+  hindi_segmented: data/hindi/segmented/
+  aligned: data/aligned/
   processed: data/processed/
+
+# Must match constants in src/preprocessing/align_sentences.py
+alignment:
+  model: sentence-transformers/LaBSE
+  method: mutual_best_greedy
+  min_similarity: 0.5
+  char_ratio_min: 0.3
+  char_ratio_max: 3.0
+  min_text_length: 3
+  dedup_jaccard: 0.85
+
+# Must match src/preprocessing/output_format.py
+splits:
+  seed: 42
+  train_frac: 0.8
+  dev_frac: 0.1
+  test_frac: 0.1
+  level: document
 
 validation:
   devanagari:

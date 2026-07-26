@@ -48,7 +48,7 @@ All 4 text-layer tools extract the **same underlying glyph stream** (identical D
 
 ---
 
-## 2. Skipped: Strip UTF-8 BOM (original plan)
+## 2. Skipped: Strip UTF-8 BOM (original plan Step 2)
 
 **Date:** 2025-07-25
 
@@ -152,40 +152,39 @@ Both working datasets already have clear paragraph structure via blank lines. Th
 
 ---
 
-## 2. Output Staging: `re_extracted/` directory instead of in-place overwrite
+## 6. Output staging: `preprocessed/` instead of in-place overwrite
 
 **Date:** 2025-07-25
 
-**Context:** The corrupted files live in `data/hindi/clean/`. Should Step 1 overwrite them directly or stage output separately?
+**Context:** The corrupted files live in `data/hindi/clean/`. Should re-extraction overwrite them directly or stage output separately?
 
-**Decision:** Stage output in `data/hindi/re_extracted/`. Provide an `--apply` flag to copy into `clean/` after verification.
+**Decision:** Stage OCR output in `data/hindi/preprocessed/`. Provide an `--apply` flag to copy into `clean/` after verification. (Early notes used the name `re_extracted/`; the live directory is `preprocessed/`.)
 
 **Rationale:**
 - Preserves the original corrupted files for comparison and audit.
-- Allows running the pipeline in "preview mode" before committing changes.
-- `--apply` gives a deliberate, explicit step to replace corrupted data.
-- Follows the principle of separating concerns: extraction (Step 1) and deployment (a downstream action).
+- Allows running extraction in preview mode before committing changes.
+- `--apply` is an explicit step to replace data under `clean/`.
+- The pipeline's Hindi working directory is `preprocessed/`, not `clean/`.
 
 ---
 
-## 3. Single-file per step vs monolithic pipeline
+## 7. Single-file per step vs monolithic pipeline
 
 **Date:** 2025-07-25
 
-**Context:** The preprocessing pipeline has 10 distinct steps. How should they be organized?
+**Context:** Preprocessing has several distinct transforms. How should they be organized?
 
-**Decision:** One file per step in `src/preprocessing/`, named by what the step does (not numbered).
+**Decision:** One file per live step in `src/preprocessing/`, named by what the step does (not numbered). Orchestration via `Makefile` / `run_pipeline.py`.
 
 **Rationale:**
 - Easier to test each step independently.
 - Easier to reason about and modify individual steps without touching others.
 - Steps can be run via `python -m src.preprocessing.<name>` for development and debugging.
 - Naming by *function* (e.g., `reextract_pdfs.py`) rather than *sequence number* (e.g., `step1_...`) prevents the files from becoming stale if step order changes, and avoids "AI slop" naming conventions.
-- A future `run_pipeline.py` orchestrator can sequence them by importing and calling each module's `run()` function.
 
 ---
 
-## 5. Intelligent line joining for English hard-wrapped text (original plan Step 4)
+## 8. Intelligent line joining for English hard-wrapped text (original plan Step 4)
 
 **Date:** 2025-07-25
 
@@ -329,14 +328,16 @@ BGE-M3 (BAAI, Feb 2024) is the current SoTA open-source multilingual embedding m
 
 **New dependency:** `sentence-transformers` + `sentence-transformers/LaBSE` model (~1.8GB). To use BGE-M3 instead, change the model name in `align_sentences.py` to `BAAI/bge-m3`.
 
-**Quality filters applied:**
+**Quality filters applied (live code in `align_sentences.py`; mirrored in `configs/preprocessing.yaml`):**
 
 | Filter | Threshold | Effect |
 |--------|-----------|--------|
-| Min similarity | > 0.5 | Removes semantically mismatched pairs |
+| Min similarity | >= 0.5 | Removes semantically mismatched pairs |
 | Length ratio | 0.3 - 3.0 | Removes extreme size mismatches |
 | Min text length | > 3 chars | Removes stray punctuation |
-| EN near-dedup | Jaccard < 0.85 | Removes near-duplicate EN within same doc |
+| EN near-dedup | Jaccard > 0.85 drops weaker | Removes near-duplicate EN within same doc |
+
+**Note vs early plan:** The original preprocessing plan suggested length ratio 0.5-2.0 and similarity 0.6-0.7. After inspecting mutual-best pair scores on this 30-doc corpus, thresholds were relaxed to 0.3-3.0 and 0.5 so recall stays high on a tiny dataset. Tightening is still a one-line change in `align_sentences.py` + the yaml mirror.
 
 **Output format:** JSONL with fields: `en_text`, `hi_text`, `doc_id`, `similarity`, `source`.
 
@@ -372,7 +373,7 @@ data/processed/
 
 ---
 
-## 6. Devanagari detection threshold
+## 12. Devanagari detection threshold
 
 **Date:** 2025-07-25
 
@@ -387,7 +388,7 @@ data/processed/
 
 ---
 
-## 7. Test file mirrors source file naming
+## 13. Test file mirrors source file naming
 
 **Date:** 2025-07-25
 
@@ -402,7 +403,7 @@ data/processed/
 
 ---
 
-## 8. PYTHONPATH requirement
+## 14. PYTHONPATH requirement
 
 **Date:** 2025-07-25
 
@@ -418,7 +419,7 @@ data/processed/
 
 ---
 
-## 12. Tokenizer analysis for Hindi-English legal text
+## 15. Tokenizer analysis for Hindi-English legal text
 
 **Date:** 2025-07-26
 
@@ -476,7 +477,7 @@ Total: 9 chars -> 11 byte-level tokens
 
 Compare with Gemma 4 (SentencePiece): same word -> 3 subword tokens.
 
-**Analysis framework:** `src/tokenizer/analysis.py` (comprehensive metrics) and `src/tokenizer/deep_dive.py` (byte fallback mechanics). Results saved to `data/analysis/tokenizer_metrics.json`. Reproduction script: `src/tokenizer/reproduce_benchmarks.py`.
+**Analysis framework:** `src/tokenizer/benchmark.py` (corpus metrics table + JSON write) and `src/tokenizer/deep_dive.py` (byte fallback mechanics). Results saved to `data/analysis/tokenizer_metrics.json`. Train domain SPMs via `src/tokenizer/prepare_corpus.py` + `src/tokenizer/train.py`.
 
 ### Custom SentencePiece trained on 14M chars of Indian legal Hindi
 
@@ -506,4 +507,21 @@ To validate whether SentencePiece's advantage is architectural or just data-scal
 
 **Practical implication:** If building a Hindi legal translation system, train a SentencePiece tokenizer on domain-specific Hindi text. The tokenizer alone can save 7-15% in token costs compared to using a general-purpose tokenizer like Gemma 4 or GPT-4o.
 
-**Trained models saved to:** `data/models/tokenizers/sentencepiece_{16k,32k,41k}.model`
+**Trained models saved to:** `data/models/tokenizers/sentencepiece_{16000,32000,41000}.model` (gitignored; retrain with `make tokenizer-train-all`).
+
+---
+
+## 16. Orchestration and docs stay tied to modules that exist
+
+**Date:** 2026-07-26
+
+**Context:** Makefile, `run_pipeline.py`, and `scripts/reproduce_all.sh` briefly pointed at future packages (`src.training`, `src.evaluation`) and renamed tokenizer modules that never shipped. Nested group expansion in `run_pipeline.py` also treated group names as step names.
+
+**Decision:**
+- Orchestrators only invoke modules under `src/preprocessing/` and `src/tokenizer/`.
+- `make all` uses `tokenizer-train-all` (alias `tokenizer-train` kept).
+- Default `run_pipeline.py --steps` is `preprocess` (not a broken nested `all`).
+- `data/models/` is gitignored (regeneratable SPMs). Keep `data/aligned/` tracked when present so benchmarks and tests can load pairs without re-running LaBSE.
+- Config yaml lists live steps + skipped steps + alignment thresholds as documentation, not a second runtime engine.
+
+**Rationale:** A broken `make eval` or wrong import path is worse than omitting future phases. Phase scaffolding appears only when the phase code exists.

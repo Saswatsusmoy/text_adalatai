@@ -1,10 +1,11 @@
 """
-End-to-end orchestration of the Adalat AI preprocessing pipeline.
+End-to-end orchestration of the Adalat AI pipeline steps that exist today.
 
 Usage:
     python run_pipeline.py --steps all
     python run_pipeline.py --steps preprocess
     python run_pipeline.py --steps align,output
+    python run_pipeline.py --steps tokenizer_bench
 """
 
 import subprocess
@@ -46,22 +47,38 @@ STEPS = {
         "desc": "Train/dev/test splits + metadata",
     },
     "tokenizer_bench": {
-        "module": "src.analysis.tokenizer_analysis",
+        "module": "src.tokenizer.benchmark",
         "args": [],
-        "desc": "Benchmark all tokenizers",
+        "desc": "Benchmark tokenizers on aligned corpus",
     },
-    "eval": {
-        "module": "src.evaluation.metrics",
-        "args": ["--jsonl", "data/aligned/all.jsonl"],
-        "desc": "Evaluate aligned pairs",
+    "tokenizer_deep_dive": {
+        "module": "src.tokenizer.deep_dive",
+        "args": [],
+        "desc": "Byte-fallback and Devanagari merge analysis",
     },
 }
 
+# Groups expand to step names only (flat). Nested group names are expanded once.
 GROUPS = {
     "preprocess": ["reextract", "join", "segment", "align", "output"],
-    "analysis": ["tokenizer_bench", "eval"],
-    "all": ["preprocess", "analysis"],
+    "tokenizer": ["tokenizer_bench"],
+    "all": ["reextract", "join", "segment", "align", "output", "tokenizer_bench"],
 }
+
+
+def expand_steps(names: list[str]) -> list[str]:
+    out: list[str] = []
+    for name in names:
+        if name in GROUPS:
+            out.extend(GROUPS[name])
+        elif name in STEPS:
+            out.append(name)
+        else:
+            print(f"Unknown step/group: {name}")
+            print(f"Steps: {', '.join(STEPS)}")
+            print(f"Groups: {', '.join(GROUPS)}")
+            sys.exit(1)
+    return out
 
 
 def run_step(name: str):
@@ -81,24 +98,20 @@ def run_step(name: str):
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="Run Adalat AI pipeline steps")
-    parser.add_argument("--steps", default="all", help="Comma-separated steps or group name")
+    parser.add_argument(
+        "--steps",
+        default="preprocess",
+        help="Comma-separated steps or group name (preprocess, tokenizer, all)",
+    )
     args = parser.parse_args()
 
-    steps_to_run = []
-    for s in args.steps.split(","):
-        s = s.strip()
-        if s in GROUPS:
-            steps_to_run.extend(GROUPS[s])
-        elif s in STEPS:
-            steps_to_run.append(s)
-        else:
-            print(f"Unknown step/group: {s}")
-            sys.exit(1)
+    requested = [s.strip() for s in args.steps.split(",") if s.strip()]
+    steps_to_run = expand_steps(requested)
 
     for step in steps_to_run:
         run_step(step)
 
-    print(f"\nAll steps completed successfully.")
+    print("\nAll steps completed successfully.")
 
 
 if __name__ == "__main__":

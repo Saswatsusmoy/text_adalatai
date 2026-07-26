@@ -2,18 +2,18 @@
 # ============================================================
 # Adalat AI - Full Reproduction Script
 # ============================================================
-# Run this to reproduce the entire pipeline from scratch.
+# Run this to reproduce the pipeline steps that exist today.
 #
 # Usage:
 #   bash scripts/reproduce_all.sh [--skip-downloads]
 #
 # Steps:
 #   1. Verify environment
-#   2. Run preprocessing pipeline (PDF -> aligned JSONL)
-#   3. Train custom tokenizers
+#   2. Run preprocessing pipeline (PDF -> aligned JSONL -> splits)
+#   3. Train custom tokenizers (unless --skip-downloads)
 #   4. Run tokenizer benchmarks
-#   5. Run evaluation
-#   6. Run all tests
+#   5. Run tokenizer deep dive + proper-noun discovery
+#   6. Run tests
 # ============================================================
 
 set -e
@@ -85,7 +85,7 @@ echo "--- Step 2: Train custom tokenizers ---"
 if [ "$SKIP_DOWNLOADS" = false ]; then
     echo "[2a] Download corpus and train tokenizers"
     PYTHONPATH=. python3 src/tokenizer/prepare_corpus.py 2>&1 | tail -3
-    
+
     for vs in 16000 32000 41000; do
         echo "Training SP $vs..."
         PYTHONPATH=. python3 src/tokenizer/train.py \
@@ -94,6 +94,9 @@ if [ "$SKIP_DOWNLOADS" = false ]; then
     done
 else
     echo "[SKIP] Tokenizer training (--skip-downloads)"
+    if [ ! -f data/models/tokenizers/sentencepiece_16000.model ]; then
+        echo "WARNING: no SP models under data/models/tokenizers/; tokenizer-bench will be limited"
+    fi
 fi
 
 echo ""
@@ -103,8 +106,8 @@ echo "--- Step 3: Tokenizer benchmarks ---"
 PYTHONPATH=. python3 src/tokenizer/benchmark.py 2>&1
 echo ""
 
-# Step 4: Data analysis
-echo "--- Step 4: Data analysis ---"
+# Step 4: Analysis helpers (no MT evaluation module yet)
+echo "--- Step 4: Analysis helpers ---"
 echo "[4a] Tokenizer deep dive"
 PYTHONPATH=. python3 src/tokenizer/deep_dive.py 2>&1 | tail -5
 
@@ -113,14 +116,9 @@ PYTHONPATH=. python3 src/preprocessing/discover_proper_nouns.py 2>&1 | tail -5
 
 echo ""
 
-# Step 5: Evaluation
-echo "--- Step 5: Evaluation ---"
-PYTHONPATH=. python3 src/evaluation/metrics.py --jsonl data/aligned/all.jsonl 2>&1
-echo ""
-
-# Step 6: Tests
-echo "--- Step 6: Tests ---"
-PYTHONPATH=. python3 -m pytest tests/ -v -k "not scan_all" 2>&1 | tail -5
+# Step 5: Tests
+echo "--- Step 5: Tests ---"
+PYTHONPATH=. python3 -m pytest tests/ -v -k "not scan_all" 2>&1 | tail -20
 
 echo ""
 echo "============================================"

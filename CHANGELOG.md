@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Docs/orchestrator drift:** Updated README and AGENTS.md to match finished preprocess + tokenizer phases. Rewrote `configs/preprocessing.yaml` for live steps, skipped steps, and alignment thresholds (min sim 0.5, char ratio 0.3-3.0). Fixed `run_pipeline.py` module paths (`src.tokenizer.benchmark`), removed calls to missing `src.evaluation` / `src.training`, and flattened group expansion. Makefile: `all` now uses `tokenizer-train-all`, dropped broken `train`/`eval` targets, alias `tokenizer-train`. `scripts/reproduce_all.sh` no longer calls missing metrics module. DESIGN_DECISIONS renumbered (1-16), tokenizer file names corrected (`benchmark.py` not `analysis.py` / `reproduce_benchmarks.py`), staging path documented as `preprocessed/`. `.gitignore` adds `data/models/`.
+
 ### Added
 
 - **Project scaffolding**: Created `src/`, `tests/`, `configs/` directory structure with Python package init files.
@@ -27,9 +31,9 @@
 
 - **Final output format** (`src/preprocessing/output_format.py`): Splits 1,458 aligned pairs into train (1,136), dev (132), and test (190) at document level. Generates `metadata.json` and `alignment_report.json`. Output in `data/processed/`.
 - **Proper noun discovery script** (`src/preprocessing/discover_proper_nouns.py`): Data-driven discovery of legal proper nouns for line joining. Scans all 30 English clean files for words appearing at continuation line starts. Derives 34 verified proper nouns with zero guessing.
-- **Tokenizer analysis framework** (`src/tokenizer/analysis.py`, `deep_dive.py`): Full corpus benchmark of 17 tokenizers across 14 model families (2024-2026): Custom SP 41K, Gemma 4, GPT-4o, Phi-4-mini, NLLB-200, Mistral Small 4, Qwen3/3.5/3.6, MiniMax M3, DeepSeek V3/V4 Pro, GLM 5.2, Phi-4, OLMo 3. Measures chars/token, HI/EN ratio, byte fallback detection. Finds that SentencePiece and multilingual BPE handle Hindi well, while byte-level BPE (all Llama-family models) cost 1.1-2.7x more tokens for Hindi regardless of vocabulary size. See DESIGN_DECISIONS.md for full comparison.
+- **Tokenizer analysis framework** (`src/tokenizer/benchmark.py`, `deep_dive.py`): Full corpus benchmark of 17 tokenizers across 14 model families (2024-2026): Custom SP 41K, Gemma 4, GPT-4o, Phi-4-mini, NLLB-200, Mistral Small 4, Qwen3/3.5/3.6, MiniMax M3, DeepSeek V3/V4 Pro, GLM 5.2, Phi-4, OLMo 3. Measures chars/token, HI/EN ratio, byte fallback detection. Finds that SentencePiece and multilingual BPE handle Hindi well, while byte-level BPE (all Llama-family models) cost 1.1-2.7x more tokens for Hindi regardless of vocabulary size. See DESIGN_DECISIONS.md for full comparison.
 - **Custom SentencePiece tokenizer** (`data/models/tokenizers/`): Trained 3 SentencePiece models (16K/32K/41K vocab) on 14M characters of Indian legal Hindi text from Prarabdha/indian-legal-supervised-fine-tuning-data (`src/tokenizer/prepare_corpus.py` outputs to `data/external/legal_hindi_corpus.txt`, gitignored). The 41K model achieves 16,840 Devanagari tokens, 3.84 HI chars/tok, and 0.743 HI/EN ratio -- beating Gemma 4 on Hindi efficiency despite 6x smaller vocabulary. Training fully reproducible via `make tokenizer-train-all`.
-- **Tokenizer benchmarks reproduction** (`src/tokenizer/reproduce_benchmarks.py`): Standalone script that benchmarks all accessible tokenizers and saves results to `data/analysis/tokenizer_metrics.json`.
+- **Tokenizer benchmarks** (`src/tokenizer/benchmark.py`): Benchmarks accessible tokenizers and saves results to `data/analysis/tokenizer_metrics.json` (`--full` for the full model set).
 - **Reproducible pipeline**: `Makefile` with targets (`make preprocess`, `make tokenizer-train-all`, `make tokenizer-bench`, `make test`). `run_pipeline.py` Python orchestrator. `scripts/reproduce_all.sh` bash reproduction script. `requirements.txt` with pinned dependencies.
 
 ### Fixed
@@ -45,7 +49,7 @@
 
 - **Phase-based organization**: `src/preprocessing/` (Phase 1), `src/tokenizer/` (Phase 2) -- only completed phases exist. No future-phase scaffolding.
 - **Everything scripted, nothing interactive**: All analyses moved from ad-hoc commands to reproducible scripts with `if __name__ == "__main__"` entry points.
-- **104 tests**: Covering preprocessing, tokenizer, and pipeline orchestration. Each phase has its own test directory.
+- **108 tests**: Covering preprocessing, tokenizer, and pipeline orchestration. Each phase has its own test directory.
 
 ### Skipped (not needed for this corpus)
 
