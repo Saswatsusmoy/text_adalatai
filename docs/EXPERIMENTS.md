@@ -430,7 +430,7 @@ Negative result stands only at the tried configuration.
 
 Reports: `data/analysis/nllb600_A2_mps_mbr8_best_report.json`, `data/analysis/nllb600_A2_mps_beam4_best_report.json`. Hyps under same tag prefixes. DESIGN_DECISIONS §31.
 
-COMET / legal error panel: not run (optional).
+Legal error / entity panel: not automated (COMET-22 is run over all shipped hyps; see §5.1 COMET table above).
 
 ---
 
@@ -452,6 +452,11 @@ COMET / legal error panel: not run (optional).
 12. **MBR N=8 (top_p=0.9, T=1.0, chrF++ utility)** loses to beam4 by ~2.5 chrF++ on both A2 test suites;
     decode-only delta after MPS/H200 control. Beam4 stays shipped. Larger N / lower T / epsilon-sampling /
     COMET utility not yet tried (§5.4).
+13. **DoRA** on the same A2 150k data with the same LoRA module surface matches A2 LoRA within +/-0.5 chrF++
+    on every suite and costs ~2x decode. Documented method ablation, not a promotion (§5.1, DESIGN §28).
+14. **COMET-22 (Unbabel/wmt22-comet-da)** reinforces the BLEU/chrF++ ordering. Nuance: B' edges A2 on I_test
+    COMET (+0.002); A2 still leads dual-policy (E_anuvaad +0.006). Adapters slightly regress E_milpac COMET
+    vs zero-shot -- MILPaC is close to NLLB's base distribution (§5.1, REPORT §4).
 
 ---
 
@@ -473,7 +478,9 @@ COMET / legal error panel: not run (optional).
 | `data/analysis/zero_shot_nllb_report*.json` | Zero-shot full test |
 | `data/analysis/nllb600_{A1,A2,B}_h200_best_report.json` | Track D full test |
 | `data/analysis/nllb600_c1c_v{1,2}_h200_best_report.json` | Track C1c full test |
+| `data/analysis/nllb600_A2_dora_h200_best_report.json` | Track D A2 DoRA ablation full test |
 | `data/analysis/nllb600_A2_mps_{beam4,mbr8}_best_report.json` | A2 decode ablation (MPS beam4 control + MBR N=8) |
+| `data/analysis/comet22_summary.json` | COMET-22 per-system per-suite summary (all shipped hyps) |
 | `data/analysis/final_dual_policy_report.json` | Combined dual-policy decision dump |
 | `data/runs/nllb600_A_A2_* /checkpoints/best_primary` | **Production adapters (D A2)** |
 | `src/config.py` | `SPM_V2_PRIMARY`, split IDs |

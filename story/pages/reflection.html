@@ -28,7 +28,7 @@
     <ul>
       <li>Custom vocab + short LoRA budget did not beat NLLB priors (C1c v2 still below ZS).</li>
       <li>Assignment-only Stage B overfits I and forgets external legal.</li>
-      <li>COMET / legal error panel not automated (optional; still a gap).</li>
+      <li>Legal error panel / glossary QA not automated (still a gap; COMET-22 is now run and reinforces the BLEU/chrF++ ordering, see Scoreboard).</li>
       <li>OCR HI references can be truncated -- metrics mix model and ref error.</li>
     </ul>
 
@@ -39,7 +39,7 @@
         <tbody>
           <tr><td>Longer emb warm-up or C1c -&gt; A2 resume</td><td>Fair shot for vocab-extend quality</td></tr>
           <tr><td>Stronger B' E replay / multi-task</td><td>Specialize without forget</td></tr>
-          <tr><td>COMET + glossary / party panel</td><td>Better legal adequacy than BLEU alone</td></tr>
+          <tr><td>CometKiwi (reference-free) + glossary / party panel</td><td>Adequacy beyond reference-based COMET-22 (already added)</td></tr>
           <tr><td>Constrained decode for parties / sections</td><td>Entity and number fidelity</td></tr>
           <tr><td>Human legal review on 50-100 sentences</td><td>Ground automatic gains</td></tr>
           <tr><td>Full-document hierarchical translate</td><td>Consistency across long judgments</td></tr>

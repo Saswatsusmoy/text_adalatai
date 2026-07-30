@@ -338,8 +338,10 @@ Full hyp dumps: `data/analysis/zero_shot_nllb_I_test_hyps.jsonl`, `data/analysis
 
 1. **Custom vocab + short LoRA budget (C1c)** did not beat stock NLLB priors. Embedding surgery needs more warm-up and data than this assignment budget.
 2. **Stage B assignment-only FT** overfits I and forgets external legal.
-3. **COMET / legal error panel** not automated (optional; would strengthen human-aligned scoring).
-4. Reference HI from OCR is imperfect -- metrics mix model error and ref noise.
+3. **DoRA on same A2 data** matched A2 LoRA within +/-0.5 chrF++ on every suite and cost ~2x decode -- valid method ablation, not a win.
+4. **MBR N=8 (top_p=0.9, T=1.0, chrF++ utility)** lost to beam4 by ~2.5 chrF++ on both suites tested; adds no quality at this configuration.
+5. **Legal error / entity panel** not automated (COMET-22 is now run and reinforces the ordering; reference-free QE like CometKiwi and a glossary panel remain gaps).
+6. Reference HI from OCR is imperfect -- metrics mix model error and ref noise.
 
 ### 6.3 How we would improve
 
@@ -347,7 +349,8 @@ Full hyp dumps: `data/analysis/zero_shot_nllb_I_test_hyps.jsonl`, `data/analysis
 |-----------|-----|
 | Longer emb warm-up or C1c -> A2 resume | Give vocab-extend a fair shot |
 | B' with stronger E replay / multi-task | Specialize without forget |
-| COMET or CometKiwi + glossary panel | Better than BLEU alone for legal adequacy |
+| CometKiwi (reference-free) + glossary / party panel | Beyond reference-based COMET-22 that is already in the scoreboard |
+| Larger-N / epsilon-sampling / COMET-utility MBR | The N=8 chrF-utility MBR that was run did not help; other configs unexplored |
 | Constrained decode for party names / sections | Reduce number and entity slips |
 | Human legal review on 50-100 sentences | Ground automatic gains |
 | More languages | Same Stage A pattern (legal bitext + dual holdout + LoRA on NLLB/IndicNMT) for other Indic pairs |
