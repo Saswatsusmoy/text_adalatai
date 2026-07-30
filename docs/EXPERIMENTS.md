@@ -34,10 +34,12 @@ Both tracks share the same frozen assignment splits and Stage A external data.
 
 | Item | Value |
 |------|------:|
-| Parallel judgments | 30 EN-HI Supreme Court docs |
+| Parallel judgments | 30 EN-HI Supreme Court of India docs |
 | After LaBSE + filters | **1,458** sentence pairs |
 | Train / dev / test pairs | 1,136 / 132 / 190 |
 | Split level | **Document** (seed 42) |
+
+Source file is `data/HC Judgments _ ML Assignment Text.xlsx` -- the "HC" in the filename is a misnomer. 21/30 PDFs open with `IN THE SUPREME COURT OF INDIA`; the remaining 9 use the equivalent `[YYYY] N S.C.R.` / `INSC` neutral-citation header. All 30 are SC judgments reviewing High Court orders (mostly Allahabad HC), which likely explains the source filename.
 
 ### 2.2 Frozen document IDs (do not change)
 

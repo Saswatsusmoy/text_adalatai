@@ -87,10 +87,12 @@ data/models/tokenizers/sentencepiece_legal_v2_joint_full_41000.model
 
 | Item | Value |
 |------|------:|
-| Parallel judgments | 30 (Supreme Court) |
+| Parallel judgments | 30 (Supreme Court of India)[^court] |
 | After LaBSE + filters | **1,458** pairs |
 | Train / dev / test | **1,136 / 132 / 190** |
 | Split | **Document-level**, seed 42 |
+
+[^court]: The assignment package ships as `HC Judgments _ ML Assignment Text.xlsx`, but every PDF is a Supreme Court judgment (21/30 declare `IN THE SUPREME COURT OF INDIA` in the header; the remaining 9 use the equivalent `[YYYY] N S.C.R.` / `INSC` neutral citation). The cases are SC appeals reviewing High Court orders (mostly Allahabad HC), which likely explains the source-file naming.
 
 Frozen doc IDs:
 
