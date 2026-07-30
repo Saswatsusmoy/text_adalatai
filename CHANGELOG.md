@@ -4,7 +4,8 @@
 
 ### Fixed
 
-- **requirements.txt:** remove invalid `python>=3.10` pip line (not a package; use pyproject requires-python).
+- **requirements.txt:** remove invalid `python>=3.10` pip line; loosen pins so clean
+  installs work (spaCy on 3.12; model via `spacy download` not a frozen wheel URL).
 
 ### Added
 

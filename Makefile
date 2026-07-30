@@ -17,16 +17,18 @@
 
 install:
 	pip install -r requirements.txt
-	python3 -m spacy download en_core_web_sm
+	python -m spacy download en_core_web_sm
 
 install-dev:
 	pip install -r requirements-dev.txt
-	python3 -m spacy download en_core_web_sm
+	python -m spacy download en_core_web_sm
 
 venv:
-	python3 -m venv .venv
+	# Prefer 3.12 for spaCy wheels when available
+	( command -v python3.12 >/dev/null && python3.12 -m venv .venv ) || python3 -m venv .venv
+	.venv/bin/pip install -U pip
 	.venv/bin/pip install -r requirements.txt
-	.venv/bin/python3 -m spacy download en_core_web_sm
+	.venv/bin/python -m spacy download en_core_web_sm
 
 # --- Phase 1: preprocessing (assignment corpus) ---
 
