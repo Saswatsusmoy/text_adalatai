@@ -937,6 +937,18 @@ v2 run: `nllb600_A_A1_c1c_v2_h200_ddp2_20260726T234856Z` (retrain after emb-save
 
 **Rationale:** DoRA is the highest-EV PEFT upgrade after LoRA saturates; keeps adapter economics. Fair comparison is same data + module surface; full A1→A2 DoRA curriculum is optional follow-up if this under-trains relative to A2's two-stage exposure.
 
+**Result (2026-07-30, H200 bf16 batch=32 beam=4, same protocol as A2 LoRA):**
+
+| Suite | A2 LoRA (shipped) | A2 DoRA | Delta |
+|-------|------------------:|--------:|------:|
+| I_test        | 21.86 / 49.66 | 21.80 / 49.18 | -0.05 / -0.47 |
+| E_milpac_test | 34.90 / 56.46 | 35.23 / 56.43 | +0.33 / -0.03 |
+| E_anuvaad_test | 45.80 / 64.83 | 45.42 / 64.43 | -0.38 / -0.40 |
+
+All BLEU/chrF++ deltas are inside +/-0.5 chrF++. DoRA neither improves nor regresses dual-policy quality at this budget on this data with the same module surface. Decode elapsed: DoRA 554.8s vs A2 LoRA 269.8s -- DoRA adds magnitude scaling per forward, roughly doubling decode cost at inference for equal-quality output.
+
+**Decision:** production stays **A2 LoRA `best_primary`**. DoRA is a completed method ablation with a documented equal-quality / higher-latency outcome, not a promotion candidate. Followups not run (optional): DoRA with an A1 -> A2 curriculum (this run went from-base since PEFT LoRA adapters cannot resume as DoRA); DoRA at higher rank; DoRA on encoder + decoder attention. Report: `data/analysis/nllb600_A2_dora_h200_best_report.json` + hyps under same tag prefix.
+
 ---
 
 ## 29. Submission package: single report + code, not multi-GB runs

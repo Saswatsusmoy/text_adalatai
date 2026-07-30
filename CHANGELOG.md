@@ -59,10 +59,11 @@
   - **Real runs (A2 adapters, MPS fp16):** I_test (n=190) MBR N=8 top_p=0.9 T=1.0 = 18.16/47.13; MPS beam4 control = 21.85/49.68; H200 beam4 shipped = 21.86/49.66. E_milpac_test (n=117) MBR = 31.39/54.07; MPS beam4 = 34.71/56.55; H200 beam4 = 34.90/56.46. Device/precision delta <=0.18 BLEU / 0.09 chrF++ (noise). Decode-only delta MBR-beam4: I -3.68/-2.56, E_milpac -3.33/-2.48. E_anuvaad skipped on MPS (~4h). **Beam4 stays shipped.** Follow-ups not run: lower T / epsilon-sampling, N=32-128, COMET utility.
   - Reports: `data/analysis/nllb600_A2_mps_{beam4,mbr8}_best_report.json` + hyps under same tag prefix.
 
-- **DoRA ablation on A2 data** (DESIGN_DECISIONS §28):
+- **DoRA ablation on A2 data** (DESIGN_DECISIONS §28, `docs/EXPERIMENTS.md` §5.1):
   - `build_lora_config` supports `peft.use_dora` / `peft.method: dora` (PEFT weight-decomposed LoRA).
   - Config `configs/training_h200_A2_dora.yaml`: decoder_attn r=16, A2 150k from base, LR 1e-4, 3000 steps DDP2.
   - Make: `train-nllb-A2-dora-h200`. Tests: `tests/training/test_lora_dora.py`.
+  - **Full test scores (H200 bf16 batch=32 beam=4, same protocol as A2 LoRA):** I_test 21.80/49.18; E_milpac_test 35.23/56.43; E_anuvaad_test 45.42/64.43. Delta vs A2 LoRA: I -0.05/-0.47, E_milpac +0.33/-0.03, E_anuvaad -0.38/-0.40 (all <=0.5 chrF++, inside noise). Decode elapsed: DoRA 554.8s vs A2 LoRA 269.8s (DoRA magnitude scaling adds per-forward cost). **A2 LoRA stays shipped**; DoRA is a valid method ablation, not a promotion. Report: `data/analysis/nllb600_A2_dora_h200_best_report.json` + hyps.
 
 - **Stage B' anti-forget replay trained + scored on H200** (DESIGN_DECISIONS §27):
   - `build_stage_b_replay_mix` in `src/training/subsample.py` -- all assignment train + domain replay from A2 subsample (default 90/10 by count, seed 42, exact pair dedup); writes `data/external/parallel/subsamples/stage_b_Bp_*` + manifest.

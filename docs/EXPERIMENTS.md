@@ -296,20 +296,29 @@ DESIGN_DECISIONS §23-26.
 | A1 | `nllb600_A_A1_h200_ddp2_*` | A1 80k | base | 3000 / 1e-4 |
 | A2 | `nllb600_A_A2_h200_A2_ddp2_*` | A2 150k | A1 best | 3000 / 5e-5 |
 | B | `nllb600_B_full_h200_B_ddp2_*` | assignment 1136 | A2 best | 800 / 3e-5 |
+| A2 DoRA (ablation) | `nllb600_A_A2_h200_A2_dora_ddp2_*` | A2 150k | base | 3000 / 1e-4 |
 
-Configs: `configs/training_h200.yaml`, `_A2`, `_B`.
+Configs: `configs/training_h200.yaml`, `_A2`, `_B`, `_A2_dora`.
 
 | System | I_test BLEU/chrF++ | E_milpac | E_anuvaad |
 |--------|-------------------:|---------:|----------:|
 | Zero-shot | 18.85 / 44.74 | 34.28 / 55.22 | 39.39 / 60.08 |
 | A1 best | 21.67 / 49.16 | 34.66 / 55.98 | 45.17 / 64.33 |
 | **A2 best (production)** | **21.86 / 49.66** | **34.90 / 56.46** | **45.80 / 64.83** |
+| A2 DoRA best | 21.80 / 49.18 | 35.23 / 56.43 | 45.42 / 64.43 |
 | B best | 23.10 / 48.89 | 30.92 / 51.22 | 40.44 / 59.60 |
 
 **Decision (DESIGN §25):** production dual-policy = **A2 `best_primary`**, not Stage B.
 B boosts I BLEU but fails E anti-forget (MILPaC chrF++ drop >5).
 
+**DoRA vs A2 LoRA (DESIGN §28):** decode-time delta on all three suites is inside +/-0.5 chrF++
+(I_test -0.47, E_milpac -0.03, E_anuvaad -0.40 chrF++). DoRA neither improves nor regresses at
+this budget with same data + module surface + step count. A2 LoRA stays shipped; DoRA is a
+valid method ablation, not a promotion. Decode elapsed on H200 batch=32 bf16 beam4:
+DoRA 554.8s vs A2 LoRA 269.8s (DoRA adds magnitude scaling per forward, ~2x decode cost).
+
 Reports: `data/analysis/nllb600_{A1,A2,B}_h200_best_report.json`,
+`data/analysis/nllb600_A2_dora_h200_best_report.json`,
 `data/analysis/final_dual_policy_report.json`, `zero_shot_nllb_report(_h200).json`.
 
 ### 5.2 Track C1c (NLLB vocab-extend + LoRA A1)

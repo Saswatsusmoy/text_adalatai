@@ -185,10 +185,13 @@ Scores are **BLEU / chrF++**.
 | Zero-shot NLLB | 18.85 / 44.74 | 34.28 / 55.22 | 39.39 / 60.08 |
 | D A1 LoRA | 21.67 / 49.16 | 34.66 / 55.98 | 45.17 / 64.33 |
 | **D A2 LoRA (production)** | **21.86 / 49.66** | **34.90 / 56.46** | **45.80 / 64.83** |
+| D A2 DoRA (weight-decomposed) | 21.80 / 49.18 | 35.23 / 56.43 | 45.42 / 64.43 |
 | D B LoRA (assignment-only specialize) | 23.10 / 48.89 | 30.92 / 51.22 | 40.44 / 59.60 |
 | D B' (replay) | 22.22 / 49.41 | 33.82 / 54.84 | 43.46 / 62.51 |
 | C1c v2 careful extend A1 | 17.79 / 43.86 | 28.20 / 49.78 | 37.64 / 58.46 |
 | C1c v1 bulk extend A1 | 6.38 / 24.86 | 10.66 / 28.63 | 15.65 / 34.35 |
+
+**Delta DoRA vs A2 LoRA (same data, same protocol on H200):** I_test -0.05 / -0.47, E_milpac +0.33 / -0.03, E_anuvaad -0.38 / -0.40 (BLEU / chrF++). All differences <= 0.5 chrF++ -- DoRA neither helps nor hurts on this budget. A2 LoRA stays shipped.
 
 **Deltas A2 vs zero-shot:**
 
