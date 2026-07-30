@@ -3,20 +3,20 @@
 import json
 from pathlib import Path
 
-from src.config import DEV_DOC_IDS, TEST_DOC_IDS, TRAIN_DOC_IDS
+from src.config import (
+    DEV_DOC_IDS,
+    EXTERNAL_EVAL_DIR,
+    PROCESSED_DIR,
+    STAGE_A_TRAIN,
+    TEST_DOC_IDS,
+    TRAIN_DOC_IDS,
+)
+from src.utils.jsonl import load_jsonl
 
 
-PROCESSED = Path('data/processed')
-EVAL_DIR = Path('data/external/parallel/eval')
-STAGE_A_TRAIN = Path('data/external/parallel/stage_a_train.jsonl')
+PROCESSED = PROCESSED_DIR
+EVAL_DIR = EXTERNAL_EVAL_DIR
 MANIFEST = EVAL_DIR / 'eval_manifest.json'
-
-
-def load_jsonl(path: Path) -> list[dict]:
-    if not path.exists():
-        return []
-    with open(path, encoding='utf-8') as f:
-        return [json.loads(line) for line in f if line.strip()]
 
 
 def pair_key(p: dict) -> tuple[str, str]:

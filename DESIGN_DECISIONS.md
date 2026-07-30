@@ -515,18 +515,18 @@ To validate whether SentencePiece's advantage is architectural or just data-scal
 
 ## 16. Orchestration and docs stay tied to modules that exist
 
-**Date:** 2026-07-26
+**Date:** 2026-07-26 (updated 2026-07-31)
 
-**Context:** Makefile, `run_pipeline.py`, and `scripts/reproduce_all.sh` briefly pointed at future packages (`src.training`, `src.evaluation`) and renamed tokenizer modules that never shipped. Nested group expansion in `run_pipeline.py` also treated group names as step names.
+**Context:** Makefile / `run_pipeline.py` must not call missing packages. Train and eval modules now exist as first-class phases.
 
 **Decision:**
-- Orchestrators only invoke modules under `src/preprocessing/` and `src/tokenizer/`.
-- `make all` uses `tokenizer-train-all` (alias `tokenizer-train` kept).
-- Default `run_pipeline.py --steps` is `preprocess` (not a broken nested `all`).
-- `data/models/` is gitignored (regeneratable SPMs). Keep `data/aligned/` tracked when present so benchmarks and tests can load pairs without re-running LaBSE.
-- Config yaml lists live steps + skipped steps + alignment thresholds as documentation, not a second runtime engine.
+- Four phase packages: `preprocessing`, `tokenizer`, `training`, `evaluation` (see `docs/WALKTHROUGH.md`).
+- `run_pipeline.py` registers only real modules; groups expand flatly. Default `--steps preprocess`. Group `all` = data path (preprocess + external + dual-policy + tokenizer bench), not multi-hour H200 train.
+- Smoke train/eval steps (`train_nllb_smoke`, `zero_shot_smoke`) are optional groups; full curricula stay on Makefile H200 targets.
+- `data/models/` and `data/runs/` gitignored (regeneratable / large). Keep `data/aligned/` trackable when present.
+- Config yaml documents live steps; runtime is the Python modules + Makefile.
 
-**Rationale:** A broken `make eval` or wrong import path is worse than omitting future phases. Phase scaffolding appears only when the phase code exists.
+**Rationale:** Clear phase boundaries for interview and graders; no phantom targets.
 
 ---
 
@@ -955,3 +955,20 @@ v2 run: `nllb600_A_A1_c1c_v2_h200_ddp2_20260726T234856Z` (retrain after emb-save
 | Production | Document A2 adapters path; base from HF; adapters local or attached by submitter |
 
 **Rationale:** Graders need a clear path through the work. Multi-GB Stage A and run trees are regeneratable and are already gitignored; shipping them would dominate the archive without improving review.
+
+---
+
+## 30. Modular phase layout for interview walkthrough
+
+**Date:** 2026-07-31
+
+**Context:** Scoring wants clean modular code with preprocess / tokenizer / train / eval clearly separated and reproducible. Interview needs a fixed tour path without losing experiments.
+
+**Decision:**
+- Keep four packages; put a short phase map in each package `__init__.py` (no logic).
+- Shared JSONL I/O in `src/utils/jsonl.py`; call sites re-export or wrap so tests keep working.
+- Central paths stay in `src/config.py` (aligned, Stage A, analysis, runs).
+- Interview script: `docs/WALKTHROUGH.md` (15-min order + module table). Do not rename experiment modules or drop Track C/C1c/B/DoRA configs.
+- Orchestrator and `reproduce_all.sh` cover data + tokenizer + dual-policy validation; full train remains Makefile.
+
+**Rationale:** Separation without a rewrite. Every experiment remains findable by the same module name; only wiring and docs clarify the boundaries.

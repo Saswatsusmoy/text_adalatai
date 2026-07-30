@@ -136,10 +136,9 @@ def build_report(pairs: list[dict]) -> dict:
 
 
 def write_jsonl(pairs: list[dict], path: Path):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, 'w', encoding='utf-8') as f:
-        for p in pairs:
-            f.write(json.dumps(p, ensure_ascii=False) + '\n')
+    from src.utils.jsonl import write_jsonl as _write
+
+    _write(path, pairs)
 
 
 def run(verbose: bool = True) -> dict:

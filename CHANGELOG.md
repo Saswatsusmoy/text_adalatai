@@ -4,6 +4,15 @@
 
 ### Added
 
+- **Modular phase layout for interview / graders (no experiment loss):**
+  - Package maps in `src/{preprocessing,tokenizer,training,evaluation,utils}/__init__.py`.
+  - Shared `src/utils/jsonl.py`; eval/subsample/split/ingest/output use it.
+  - `docs/WALKTHROUGH.md` -- 15-min tour + phase/module tables.
+  - `run_pipeline.py` -- external_eval_split, eval_sets, zero_shot_smoke,
+    train_nllb_smoke; groups external/eval_smoke/train_smoke; `--list`.
+  - `scripts/reproduce_all.sh` -- dual-policy split + optional zero-shot smoke + lint.
+  - README phase table; AGENTS phase status; DESIGN §16/§30.
+
 - **Ruff lint/format tooling:**
   - `pyproject.toml` -- ruff lint + format (line-length 100, single quotes, py310,
     first-party `src`), pytest config.

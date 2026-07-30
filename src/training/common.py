@@ -19,9 +19,9 @@ def set_seed(seed: int, rank: int = 0):
 
 
 def append_jsonl(path: Path, row: dict):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, 'a', encoding='utf-8') as f:
-        f.write(json.dumps(row, ensure_ascii=False) + '\n')
+    from src.utils.jsonl import append_jsonl as _append
+
+    _append(path, row)
 
 
 def write_json(path: Path, obj, indent: int = 2):

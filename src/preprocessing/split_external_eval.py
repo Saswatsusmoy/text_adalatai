@@ -17,11 +17,12 @@ import json
 import random
 from pathlib import Path
 
+from src.config import EXTERNAL_EVAL_DIR, EXTERNAL_PARALLEL_DIR, STAGE_A_ALL, STAGE_A_TRAIN
+from src.utils.jsonl import load_jsonl, write_jsonl
 
-PARALLEL_DIR = Path('data/external/parallel')
-STAGE_A_ALL = PARALLEL_DIR / 'stage_a_en_hi.jsonl'
-STAGE_A_TRAIN = PARALLEL_DIR / 'stage_a_train.jsonl'
-EVAL_DIR = PARALLEL_DIR / 'eval'
+
+PARALLEL_DIR = EXTERNAL_PARALLEL_DIR
+EVAL_DIR = EXTERNAL_EVAL_DIR
 
 SEED = 42
 # MILPaC: quality legal; keep most for train, hold out stable fractions
@@ -34,25 +35,6 @@ ANUVAAD_TEST_N = 3000
 
 def pair_key(p: dict) -> tuple[str, str]:
     return (p.get('en_text', '').strip(), p.get('hi_text', '').strip())
-
-
-def load_jsonl(path: Path) -> list[dict]:
-    if not path.exists():
-        return []
-    rows = []
-    with open(path, encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                rows.append(json.loads(line))
-    return rows
-
-
-def write_jsonl(path: Path, rows: list[dict]):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, 'w', encoding='utf-8') as f:
-        for r in rows:
-            f.write(json.dumps(r, ensure_ascii=False) + '\n')
 
 
 def is_milpac(source: str) -> bool:

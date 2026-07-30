@@ -1,4 +1,4 @@
-"""Smoke tests: each pipeline module can be imported and has a run() function."""
+"""Smoke tests: pipeline modules import; run_pipeline registry matches packages."""
 
 import importlib
 
@@ -13,8 +13,13 @@ class TestPipelineImports:
         'src.preprocessing.align_sentences',
         'src.preprocessing.output_format',
         'src.preprocessing.ingest_external_parallel',
+        'src.preprocessing.split_external_eval',
         'src.tokenizer.train',
         'src.tokenizer.benchmark',
+        'src.evaluation.eval_sets',
+        'src.evaluation.metrics_mt',
+        'src.training.subsample',
+        'src.utils.jsonl',
     ]
 
     def test_all_modules_importable(self):
@@ -23,8 +28,7 @@ class TestPipelineImports:
             assert mod is not None, f'Failed to import {mod_name}'
 
     def test_preprocessing_has_run(self):
-        # First 5 preprocessing modules + ingest_external_parallel
-        for mod_name in self.modules[:6]:
+        for mod_name in self.modules[:7]:
             mod = importlib.import_module(mod_name)
             assert hasattr(mod, 'run'), f'{mod_name} missing run()'
 
@@ -52,9 +56,22 @@ class TestRunPipelineRegistry:
         ]
 
     def test_external_group(self):
-        assert run_pipeline.expand_steps(['external']) == ['external_ingest']
+        assert run_pipeline.expand_steps(['external']) == [
+            'external_ingest',
+            'external_eval_split',
+            'eval_sets',
+        ]
         assert run_pipeline.expand_steps(['external_full']) == [
             'external_download',
             'external_ingest',
+            'external_eval_split',
+            'eval_sets',
         ]
-        assert 'external_ingest' in run_pipeline.expand_steps(['all'])
+        expanded_all = run_pipeline.expand_steps(['all'])
+        assert 'external_ingest' in expanded_all
+        assert 'external_eval_split' in expanded_all
+        assert 'eval_sets' in expanded_all
+
+    def test_phase_groups_cover_train_eval_smoke(self):
+        assert 'zero_shot_smoke' in run_pipeline.expand_steps(['eval_smoke'])
+        assert 'train_nllb_smoke' in run_pipeline.expand_steps(['train_smoke'])

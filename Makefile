@@ -28,7 +28,7 @@ venv:
 	.venv/bin/pip install -r requirements.txt
 	.venv/bin/python3 -m spacy download en_core_web_sm
 
-# --- Preprocessing pipeline ---
+# --- Phase 1: preprocessing (assignment corpus) ---
 
 reextract:
 	PYTHONPATH=. python3 src/preprocessing/reextract_pdfs.py --all
@@ -49,7 +49,7 @@ output:
 preprocess: reextract join segment align output
 	@echo "Preprocessing complete"
 
-# --- External legal parallel (Stage A) ---
+# --- Phase 1b: external Stage A + dual-policy split ---
 
 external-download:
 	PYTHONPATH=. python3 src/preprocessing/ingest_external_parallel.py --download
@@ -62,7 +62,7 @@ external-eval-split:
 	PYTHONPATH=. python3 src/preprocessing/split_external_eval.py
 	PYTHONPATH=. python3 -m src.evaluation.eval_sets
 
-# --- Tokenizer ---
+# --- Phase 2: tokenizer ---
 
 tokenizer-prepare:
 	PYTHONPATH=. python3 src/tokenizer/prepare_corpus.py
@@ -109,19 +109,21 @@ tokenizer-spm-v2-full-joint:
 	PYTHONPATH=. python3 src/tokenizer/train_full_joint.py --vocab-size 41000 --max-chars 4096
 	PYTHONPATH=. python3 src/tokenizer/benchmark.py --eval held_out
 
-# --- Local hardware / MLX ---
+# --- Hardware ---
 
 profile-hardware:
 	PYTHONPATH=. python3 src/utils/profile_hardware.py
 
-# Track D zero-shot NLLB (MPS/CPU) on Policy I + E
+# --- Phase 4: evaluation ---
+
 zero-shot-nllb:
 	PYTHONPATH=. python3 -m src.evaluation.zero_shot_nllb
 
 zero-shot-nllb-smoke:
 	PYTHONPATH=. python3 -m src.evaluation.zero_shot_nllb --max-pairs 5 --suites I_test,E_milpac_test
 
-# Stage A NLLB LoRA (MPS)
+# --- Phase 3: training (Track D default; Track C via train-c1* / c1c*) ---
+
 stage-a-subsample-smoke:
 	PYTHONPATH=. python3 -m src.training.subsample --curriculum smoke
 

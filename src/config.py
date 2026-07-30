@@ -63,8 +63,18 @@ SPM_V2_PRIMARY = (
     / 'sentencepiece_legal_v2_joint_full_41000.model'
 )
 
+# Assignment aligned pairs (after LaBSE)
+ALIGNED_DIR = DATA_DIR / 'aligned'
+ALIGNED_ALL = ALIGNED_DIR / 'all.jsonl'
+
 # Dual eval policies (see docs/EXPERIMENTS.md, split_external_eval.py)
 EXTERNAL_PARALLEL_DIR = DATA_DIR / 'external' / 'parallel'
 STAGE_A_ALL = EXTERNAL_PARALLEL_DIR / 'stage_a_en_hi.jsonl'
 STAGE_A_TRAIN = EXTERNAL_PARALLEL_DIR / 'stage_a_train.jsonl'
 EXTERNAL_EVAL_DIR = EXTERNAL_PARALLEL_DIR / 'eval'
+
+# Artifacts
+ANALYSIS_DIR = DATA_DIR / 'analysis'
+MODELS_DIR = DATA_DIR / 'models'
+TOKENIZER_DIR = MODELS_DIR / 'tokenizers'
+RUNS_DIR = DATA_DIR / 'runs'

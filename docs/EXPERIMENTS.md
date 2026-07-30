@@ -6,6 +6,8 @@ and how to reproduce.
 
 **Assignment report (start here for submission):** [`REPORT.md`](../REPORT.md)
 
+**Interview tour (phase packages):** [`WALKTHROUGH.md`](WALKTHROUGH.md)
+
 **Related:** `CHANGELOG.md`, `DESIGN_DECISIONS.md`, `.local/dual_track_experiment_plan.md` (private).
 
 ---

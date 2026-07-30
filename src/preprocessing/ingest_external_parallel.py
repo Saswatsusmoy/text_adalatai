@@ -244,10 +244,9 @@ def load_anuvaad_all(anuvaad_dir: Path = ANUVAAD_DIR) -> dict[str, list[dict]]:
 
 
 def write_jsonl(pairs: list[dict], path: Path):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, 'w', encoding='utf-8') as f:
-        for p in pairs:
-            f.write(json.dumps(p, ensure_ascii=False) + '\n')
+    from src.utils.jsonl import write_jsonl as _write
+
+    _write(path, pairs)
 
 
 def run(download: bool = False, verbose: bool = True) -> dict:

@@ -7,22 +7,11 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 from src.training.config import deep_get, load_training_config
+from src.utils.jsonl import load_jsonl, write_jsonl
 
 
 OUT_DIR = Path('data/external/parallel/subsamples')
 STAGE_B_OUT_DIR = OUT_DIR
-
-
-def load_jsonl(path: Path) -> list[dict]:
-    with open(path, encoding='utf-8') as f:
-        return [json.loads(line) for line in f if line.strip()]
-
-
-def write_jsonl(path: Path, rows: list[dict]):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, 'w', encoding='utf-8') as f:
-        for r in rows:
-            f.write(json.dumps(r, ensure_ascii=False) + '\n')
 
 
 def file_sha256(path: Path, max_bytes: int = 8_000_000) -> str:
