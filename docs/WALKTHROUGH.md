@@ -127,7 +127,8 @@ Base: `facebook/nllb-200-distilled-600M`
 |--------|------|
 | `eval_sets.py` | Policy I + E suite paths + leak validation |
 | `metrics_mt.py` | sacrebleu BLEU + chrF++ |
-| `zero_shot_nllb.py` | Decode base or PEFT adapters; write hyps + report |
+| `zero_shot_nllb.py` | Decode base or PEFT adapters; write hyps + report; `--mbr` flag routes through `mbr_decode.py` |
+| `mbr_decode.py` | Sample N + argmax mean pairwise sentence-chrF++ (MBR decode ablation; DESIGN §31) |
 | `eval_legal_mt.py` | Track C1 Marian checkpoints |
 
 Score production adapters:
@@ -136,6 +137,14 @@ Score production adapters:
 PYTHONPATH=. python3 -m src.evaluation.zero_shot_nllb \
   --adapters data/runs/.../checkpoints/best_primary \
   --tag A2_best
+```
+
+MBR decode ablation (`make eval-mbr-a2`; -2.5 chrF++ vs beam4 at N=8 top_p=0.9 T=1.0, EXPERIMENTS §5.4):
+
+```bash
+PYTHONPATH=. python3 -m src.evaluation.zero_shot_nllb \
+  --adapters data/runs/.../checkpoints/best_primary \
+  --mbr --mbr-samples 8 --mbr-utility chrfpp
 ```
 
 Metrics JSON + hyps: `data/analysis/*_report.json`, `*_hyps.jsonl`.

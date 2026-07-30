@@ -200,6 +200,20 @@ Scores are **BLEU / chrF++**.
 
 COMET: not run (optional). Machine reports: `data/analysis/final_dual_policy_report.json` and per-system `*_best_report.json`.
 
+### Decode ablation -- MBR vs beam4 (A2 adapters)
+
+Inference-only test on the shipped A2 checkpoint (no retrain). MBR = sample N candidates, output argmax mean pairwise sentence-chrF++ utility (Eikema & Aziz 2020; Freitag et al. 2022). Wiring: `src/evaluation/mbr_decode.py`, `--mbr --mbr-samples N ...` on `zero_shot_nllb`.
+
+| System | I_test | E_milpac_test |
+|--------|-------:|--------------:|
+| A2 beam4 (H200 bf16, shipped) | 21.86 / 49.66 | 34.90 / 56.46 |
+| A2 beam4 (MPS fp16, control) | 21.85 / 49.68 | 34.71 / 56.55 |
+| A2 MBR N=8 top_p=0.9 T=1.0 (MPS fp16) | **18.16 / 47.13** | **31.39 / 54.07** |
+
+Device/precision delta MPS beam4 - H200 beam4: <=0.18 BLEU / 0.09 chrF++ (noise). Decode-only delta MBR - MPS beam4: I_test **-3.68 / -2.56**, E_milpac **-3.33 / -2.48**. E_anuvaad_test not run (~4h on MPS at this rate).
+
+**Verdict:** at N=8 with top_p=0.9 T=1.0 chrF++ utility, MBR does not help. Beam4 stays shipped. Follow-ups not run: lower temperature (T=0.3-0.5) or epsilon-sampling (Freitag 2022), larger N (32-128), COMET utility. Negative result stands only at the tried configuration. Details: DESIGN_DECISIONS §31, `docs/EXPERIMENTS.md` §5.4.
+
 ### Token usage (before/after, packing)
 
 Tokenizer path (assignment pairs, domain SP 41k vs general baselines): domain SP cuts total tokens vs Gemma/GPT-class tokenizers on this legal set (Section 1.2 table: ~53k vs ~57-60k). That is a direct reduction in sequence length / cost for any model that *uses* that tokenizer.

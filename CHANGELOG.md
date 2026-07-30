@@ -45,6 +45,13 @@
   - Lightweight MT metrics + I/E reports under `data/analysis/` (scores JSON + hyp JSONL for
     qualitative review). Full multi-GB `data/runs/` and Stage A pools remain gitignored.
 
+- **MBR decode ablation on A2** (DESIGN_DECISIONS §31, `docs/EXPERIMENTS.md` §5.4):
+  - `src/evaluation/mbr_decode.py`: `mbr_pick`, `sample_candidates`, `translate_batch_mbr` (nucleus sample N + argmax mean pairwise sentence-chrF++ utility; Eikema & Aziz 2020, Freitag et al. 2022).
+  - `src/evaluation/zero_shot_nllb.py`: `--mbr --mbr-samples N --mbr-temperature T --mbr-top-p P --mbr-utility {chrf,chrfpp}`; auto-appends `_mbr{N}` to tag so hyp files don't clobber beam4 runs.
+  - Make: `eval-mbr-a2`, `eval-mbr-zs`, `eval-mbr-smoke`. Tests: `tests/evaluation/test_mbr_decode.py`.
+  - **Real runs (A2 adapters, MPS fp16):** I_test (n=190) MBR N=8 top_p=0.9 T=1.0 = 18.16/47.13; MPS beam4 control = 21.85/49.68; H200 beam4 shipped = 21.86/49.66. E_milpac_test (n=117) MBR = 31.39/54.07; MPS beam4 = 34.71/56.55; H200 beam4 = 34.90/56.46. Device/precision delta <=0.18 BLEU / 0.09 chrF++ (noise). Decode-only delta MBR-beam4: I -3.68/-2.56, E_milpac -3.33/-2.48. E_anuvaad skipped on MPS (~4h). **Beam4 stays shipped.** Follow-ups not run: lower T / epsilon-sampling, N=32-128, COMET utility.
+  - Reports: `data/analysis/nllb600_A2_mps_{beam4,mbr8}_best_report.json` + hyps under same tag prefix.
+
 - **DoRA ablation on A2 data** (DESIGN_DECISIONS §28):
   - `build_lora_config` supports `peft.use_dora` / `peft.method: dora` (PEFT weight-decomposed LoRA).
   - Config `configs/training_h200_A2_dora.yaml`: decoder_attn r=16, A2 150k from base, LR 1e-4, 3000 steps DDP2.

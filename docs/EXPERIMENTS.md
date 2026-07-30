@@ -378,6 +378,32 @@ C1c v2 careful A1       17.79 / 43.86        28.20 / 49.78   37.64 / 58.46
 C1c v1 bulk A1           6.38 / 24.86        10.66 / 28.63   15.65 / 34.35
 ```
 
+### 5.4 Decode ablation -- MBR vs beam4 (A2 adapters)
+
+Inference-only ablation (no retrain). Same A2 adapters, same base weights, same
+sacreBLEU signatures. MBR = sample N candidates, output argmax mean pairwise
+sentence-chrF++ utility (Eikema & Aziz 2020; Freitag et al. 2022).
+
+**Wiring:** `src/evaluation/mbr_decode.py`; CLI `--mbr --mbr-samples N --mbr-temperature T --mbr-top-p P --mbr-utility {chrf,chrfpp}` on `src.evaluation.zero_shot_nllb`. Sampling: `do_sample=True, num_beams=1, top_p=0.9, temperature=1.0, num_return_sequences=N` in one `generate` call. Cost: N x beam1 decode + N^2 sentence-chrF per source (chrF cost negligible vs generation).
+
+| System | I_test | E_milpac_test |
+|--------|-------:|--------------:|
+| A2 beam4 (H200 bf16, shipped) | 21.86 / 49.66 | 34.90 / 56.46 |
+| A2 beam4 (MPS fp16, control) | 21.85 / 49.68 | 34.71 / 56.55 |
+| A2 MBR N=8 top_p=0.9 T=1.0 (MPS fp16) | 18.16 / 47.13 | 31.39 / 54.07 |
+
+Device/precision delta (MPS beam4 - H200 beam4): I_test -0.01 / +0.02, E_milpac -0.18 / +0.09 (inside noise).
+
+Decode-only delta (MPS MBR - MPS beam4): I_test **-3.68 / -2.56**, E_milpac **-3.33 / -2.48**.
+
+E_anuvaad_test not run: ~4h on MPS at this rate.
+
+**Decision:** do not promote MBR at these settings. Beam4 stays shipped. Follow-ups not run:
+lower temperature (T=0.3-0.5) or epsilon-sampling (Freitag 2022), higher N (32-128), COMET utility.
+Negative result stands only at the tried configuration.
+
+Reports: `data/analysis/nllb600_A2_mps_mbr8_best_report.json`, `data/analysis/nllb600_A2_mps_beam4_best_report.json`. Hyps under same tag prefixes. DESIGN_DECISIONS §31.
+
 COMET / legal error panel: not run (optional).
 
 ---
@@ -397,6 +423,9 @@ COMET / legal error panel: not run (optional).
     production stays D A2. Custom-vocab surgery did not beat stock NLLB priors on this recipe.
 11. Always persist trained emb rows when using grad-mask / non-`modules_to_save` emb training
     (`new_embed_rows.pt`).
+12. **MBR N=8 (top_p=0.9, T=1.0, chrF++ utility)** loses to beam4 by ~2.5 chrF++ on both A2 test suites;
+    decode-only delta after MPS/H200 control. Beam4 stays shipped. Larger N / lower T / epsilon-sampling /
+    COMET utility not yet tried (§5.4).
 
 ---
 
@@ -418,6 +447,7 @@ COMET / legal error panel: not run (optional).
 | `data/analysis/zero_shot_nllb_report*.json` | Zero-shot full test |
 | `data/analysis/nllb600_{A1,A2,B}_h200_best_report.json` | Track D full test |
 | `data/analysis/nllb600_c1c_v{1,2}_h200_best_report.json` | Track C1c full test |
+| `data/analysis/nllb600_A2_mps_{beam4,mbr8}_best_report.json` | A2 decode ablation (MPS beam4 control + MBR N=8) |
 | `data/analysis/final_dual_policy_report.json` | Combined dual-policy decision dump |
 | `data/runs/nllb600_A_A2_* /checkpoints/best_primary` | **Production adapters (D A2)** |
 | `src/config.py` | `SPM_V2_PRIMARY`, split IDs |
