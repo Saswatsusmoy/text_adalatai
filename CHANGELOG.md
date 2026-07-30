@@ -2,13 +2,20 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Multi-page assignment docs walkthrough (`story/`):**
+  - Docs-style light site with separate pages (assignment, pipeline, tokenizers, Stage A,
+    dual eval, Track D/C, scoreboard, qualitative, production, failures, reflection,
+    interview, artifacts, glossary, reproduce).
+  - Shared shell via `js/site.js` (sidebar TOC + prev/next). Open `story/index.html`.
+
 ### Fixed
 
 - **requirements.txt:** remove invalid `python>=3.10` pip line; loosen pins so clean
   installs work (spaCy on 3.12; model via `spacy download` not a frozen wheel URL).
 
 ### Added
-
 
 - **Modular phase layout for interview / graders (no experiment loss):**
   - Package maps in `src/{preprocessing,tokenizer,training,evaluation,utils}/__init__.py`.

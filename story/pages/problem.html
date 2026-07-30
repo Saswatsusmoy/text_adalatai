@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Problem and setup</title>
+  <link rel="stylesheet" href="../css/story.css" />
+</head>
+<body data-page="problem">
+  <div id="page-source" data-title="Problem and setup" data-kicker="Context">
+    <p>
+      Court judgments are a hard EN-&gt;HI case: long sentences, archaic legal English, mixed-script
+      Hindi (Devanagari plus English citations like S.C.R., Section, Article), and domain terms that
+      generic web MT under-serves. The assignment therefore forces two linked questions -- how
+      expensive is Hindi to tokenize, and can a small model adapt to legal style without full fine-tune cost.
+    </p>
+
+    <h2>Why two pillars</h2>
+    <ul>
+      <li><strong>Token efficiency</strong> controls sequence length, context budget, and inference cost under LLMs and NMT tokenizers.</li>
+      <li><strong>Domain adaptation</strong> controls fidelity of legal meaning (party roles, constitutional articles, procedure).</li>
+    </ul>
+    <p>
+      Optimizing only packing can ship a tokenizer story that does not translate better. Optimizing
+      only BLEU without dual holdouts can overfit a 30-document set. This project measures both.
+    </p>
+
+    <h2>Corpus (assignment)</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Item</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>Parallel judgments</td><td>30 (Supreme Court style appeals; assignment package)</td></tr>
+          <tr><td>After LaBSE + filters</td><td>1,458 sentence pairs</td></tr>
+          <tr><td>Train / dev / test</td><td>1,136 / 132 / 190</td></tr>
+          <tr><td>Split</td><td>Document-level, seed 42</td></tr>
+          <tr><td>Test docs</td><td>1, 4, 21</td></tr>
+          <tr><td>Dev docs</td><td>8, 9, 24</td></tr>
+          <tr><td>EN / HI scale (clean)</td><td>~259k EN chars · ~242k HI chars</td></tr>
+          <tr><td>Domain mix</td><td>service discipline, land, consolidation, PF/EPFO, trade tax, CrPC 482, corruption</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Hard constraints (frozen)</h2>
+    <ul>
+      <li>No re-split of assignment document IDs after freeze.</li>
+      <li>SPM train text may use Stage A + assignment <em>train</em> only -- never assignment dev/test docs.</li>
+      <li>Stage A MT train excludes Policy E holdouts (<code>stage_a_train.jsonl</code> only).</li>
+      <li>Zero-shot baseline before claiming LoRA gains.</li>
+      <li>Final claims use fixed decode protocol: beam 4, max_new 256, max_in 256.</li>
+      <li>Every MT system reports Policy I_test, E_milpac_test, E_anuvaad_test.</li>
+    </ul>
+
+    <h2>Hardware used</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Environment</th><th>Spec</th><th>Role</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Local</td>
+            <td>Apple M4 MacBook Air, 16 GB unified memory, PyTorch MPS / MLX</td>
+            <td>Preprocess, SPM, smoke LoRA, analysis</td>
+          </tr>
+          <tr>
+            <td>Remote (optional)</td>
+            <td>2x NVIDIA H200 ~141 GB, CUDA/Hopper, DDP torchrun</td>
+            <td>Full Stage A curricula + full dual-policy decode</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      The assignment only needs a Colab-class single GPU. Full dual-policy tables were finished on
+      H200 for speed; the same configs and metrics apply on MPS via <code>configs/training.yaml</code>
+      and <code>make train-nllb-smoke</code>.
+    </p>
+
+    <h2>Code layout (four phases)</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Phase</th><th>Package</th><th>Responsibility</th></tr></thead>
+        <tbody>
+          <tr><td>1 Data</td><td><code>src/preprocessing/</code></td><td>OCR, join, segment, align, splits, Stage A</td></tr>
+          <tr><td>2 Tokenizers</td><td><code>src/tokenizer/</code></td><td>Survey, domain SPM train, benches</td></tr>
+          <tr><td>3 Train</td><td><code>src/training/</code></td><td>NLLB LoRA, Marian C1, vocab extend</td></tr>
+          <tr><td>4 Eval</td><td><code>src/evaluation/</code></td><td>Suites, BLEU/chrF++, decode + hyps</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <script src="../js/site.js"></script>
+</body>
+</html>

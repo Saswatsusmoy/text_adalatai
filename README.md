@@ -12,7 +12,7 @@ Prototype text-translation system for **Indian court judgments** (English -> Hin
 | Graders | [`REPORT.md`](REPORT.md) |
 | Interview walkthrough | [`docs/WALKTHROUGH.md`](docs/WALKTHROUGH.md) |
 | Full experiment tables | [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md) |
-| Interactive story | [`story/index.html`](story/index.html) |
+| **Interactive multi-page walkthrough** | [`story/index.html`](story/index.html) (docs-style site) |
 | Design rationale | [`DESIGN_DECISIONS.md`](DESIGN_DECISIONS.md) |
 
 **Production:** NLLB-200 distilled 600M + LoRA Stage **A2**  

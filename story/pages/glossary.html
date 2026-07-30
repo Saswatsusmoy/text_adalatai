@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Glossary</title>
+  <link rel="stylesheet" href="../css/story.css" />
+</head>
+<body data-page="glossary">
+  <div id="page-source" data-title="Glossary" data-kicker="Close">
+    <p>Terms used throughout the walkthrough and report.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td>A1</td><td>Stage A curriculum first: ~80k curated pairs, LoRA from base NLLB</td></tr>
+          <tr><td>A2</td><td>Stage A scale: 150k pairs, resume A1; production dual-policy pick</td></tr>
+          <tr><td>Stage B</td><td>Assignment-only specialize; failed external anti-forget without replay</td></tr>
+          <tr><td>B'</td><td>Stage B with assignment + Stage A replay mix</td></tr>
+          <tr><td>Track D</td><td>Defaults track: stock NLLB tokenizer + LoRA</td></tr>
+          <tr><td>Track C</td><td>Custom domain SPM + model adapt experiments</td></tr>
+          <tr><td>C0</td><td>Domain SPM freeze joint_full_41000</td></tr>
+          <tr><td>C1a</td><td>Train enc-dec from scratch with domain SPM (stopped as quality path)</td></tr>
+          <tr><td>C1c</td><td>NLLB vocab-extend + LoRA (v1 bulk failed; v2 careful still below ZS)</td></tr>
+          <tr><td>Policy I</td><td>Internal assignment eval (test docs 1,4,21)</td></tr>
+          <tr><td>Policy E</td><td>External legal holdouts (MILPaC + Anuvaad) never in Stage A train</td></tr>
+          <tr><td>LoRA</td><td>Low-Rank Adaptation PEFT; ~0.5% params on decoder_attn profile</td></tr>
+          <tr><td>decoder_attn</td><td>LoRA on decoder self-attn and encoder-decoder cross-attn</td></tr>
+          <tr><td>chrF++</td><td>Primary HI quality metric (char n-grams + word unigrams)</td></tr>
+          <tr><td>BLEU</td><td>sacreBLEU lexical overlap; reported but weaker alone for HI</td></tr>
+          <tr><td>LaBSE</td><td>Sentence embedding model for EN-HI mutual-best alignment</td></tr>
+          <tr><td>NLLB</td><td>Meta NLLB-200 distilled 600M seq2seq MT (eng_Latn -&gt; hin_Deva)</td></tr>
+          <tr><td>SPM</td><td>SentencePiece (domain Unigram models for Track C)</td></tr>
+          <tr><td>anti-forget</td><td>Constraint: external legal quality must not drop past a bar when specializing</td></tr>
+          <tr><td>best_primary</td><td>Checkpoint with best dual-policy primary score on dev</td></tr>
+          <tr><td>new_embed_rows.pt</td><td>Saved new embedding rows for C1c v2 (not in PEFT LoRA adapter)</td></tr>
+          <tr><td>MILPaC</td><td>Law-AI Multilingual Indian Legal Parallel Corpus</td></tr>
+          <tr><td>Anuvaad</td><td>Anuvaad legal EN-HI parallel sources (scale Stage A)</td></tr>
+          <tr><td>ZS</td><td>Zero-shot: base NLLB without fine-tune adapters</td></tr>
+          <tr><td>DDP</td><td>DistributedDataParallel (torchrun, here often 2x H200)</td></tr>
+          <tr><td>H200</td><td>NVIDIA H200 GPU used for optional full train/eval</td></tr>
+          <tr><td>MPS</td><td>Apple Metal Performance Shaders backend for local PyTorch</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <script src="../js/site.js"></script>
+</body>
+</html>

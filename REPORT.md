@@ -7,8 +7,8 @@ English to Hindi translation for Indian court judgments, with two goals:
 
 **Production system:** NLLB-200 distilled 600M + LoRA Stage A2  
 **Checkpoint:** `data/runs/nllb600_A_A2_h200_A2_ddp2_20260726T212958Z/checkpoints/best_primary`  
-**Code tour (interview):** [`docs/WALKTHROUGH.md`](docs/WALKTHROUGH.md)  
-**Interactive process log:** [`story/index.html`](story/index.html)  
+**Interactive walkthrough (interview):** [`story/index.html`](story/index.html)  
+**Code tour:** [`docs/WALKTHROUGH.md`](docs/WALKTHROUGH.md)  
 **Full tables and freezes:** [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md)
 
 ---

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Failures log</title>
+  <link rel="stylesheet" href="../css/story.css" />
+</head>
+<body data-page="failures">
+  <div id="page-source" data-title="Failures and traps" data-kicker="Close">
+    <p>
+      Negative results are part of the assignment evidence. This log is what I would walk an
+      interviewer through when asked "what did not work?"
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Item</th><th>What happened</th><th>Fix / status</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>pdftotext for Hindi</td>
+            <td>Ligature spacing destruction; shared broken text stream across tools</td>
+            <td>Tesseract OCR default</td>
+          </tr>
+          <tr>
+            <td>Naive OCR <code>li.</code> fix</td>
+            <td>Would corrupt S.L.P. and judge initials</td>
+            <td>Never ship</td>
+          </tr>
+          <tr>
+            <td>BOM / CRLF / paragraph steps</td>
+            <td>No residual benefit on live OCR path</td>
+            <td>Skipped with evidence</td>
+          </tr>
+          <tr>
+            <td>HI-only SPM for MT</td>
+            <td>HI/EN ratio ~0.43; English fragmented</td>
+            <td>Joint EN+HI freeze</td>
+          </tr>
+          <tr>
+            <td>torch.compile + DDP</td>
+            <td>Hang / NCCL abort after first loss_eval</td>
+            <td>compile off when world_size &gt; 1</td>
+          </tr>
+          <tr>
+            <td>Stage B no replay</td>
+            <td>I BLEU up, E_milpac chrF -5.24</td>
+            <td>Ablation only; ship A2</td>
+          </tr>
+          <tr>
+            <td>C1c bulk +8k tokens</td>
+            <td>I chrF 24.9; breaks good NLLB singles</td>
+            <td>Ablation</td>
+          </tr>
+          <tr>
+            <td>C1c emb not saved</td>
+            <td>PEFT LoRA-only adapter dropped grad-mask emb rows</td>
+            <td><code>new_embed_rows.pt</code> + retrain</td>
+          </tr>
+          <tr>
+            <td>C1c v2 careful @ A1</td>
+            <td>Still below zero-shot on full I+E</td>
+            <td>Not production</td>
+          </tr>
+          <tr>
+            <td>C1a from-scratch</td>
+            <td>Weak quality path at 80k vs NLLB priors</td>
+            <td>Stopped; scaffold kept</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>What I learned from failures</h2>
+    <ul>
+      <li>Measure extraction quality before building NLP steps on garbage text layers.</li>
+      <li>Hold out external domain data before celebrating assignment-test gains.</li>
+      <li>Tokenizer packing and MT quality are different objectives; do not conflate them.</li>
+      <li>Checkpoint what you actually train (embedding rows outside PEFT adapters).</li>
+    </ul>
+  </div>
+  <script src="../js/site.js"></script>
+</body>
+</html>

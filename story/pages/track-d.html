@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Track D</title>
+  <link rel="stylesheet" href="../css/story.css" />
+</head>
+<body data-page="track-d">
+  <div id="page-source" data-title="Track D -- NLLB LoRA journey" data-kicker="Phase 3">
+    <p>
+      Track D is the production path: keep the NLLB tokenizer and prior, train small LoRA adapters
+      on legal Stage A bitext, then test whether assignment-only specialization helps without
+      destroying external legal quality.
+    </p>
+
+    <h2>0. Zero-shot baseline</h2>
+    <p>
+      Model: <code>facebook/nllb-200-distilled-600M</code>, languages <code>eng_Latn</code> -&gt;
+      <code>hin_Deva</code>, no adapters. Full Policy I + E.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Suite</th><th>BLEU</th><th>chrF++</th><th>n</th></tr></thead>
+        <tbody>
+          <tr><td>I_test</td><td class="num">18.85</td><td class="num">44.74</td><td class="num">190</td></tr>
+          <tr><td>E_milpac_test</td><td class="num">34.28</td><td class="num">55.22</td><td class="num">117</td></tr>
+          <tr><td>E_anuvaad_test</td><td class="num">39.39</td><td class="num">60.08</td><td class="num">3,000</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Every later system must clear this floor on dual policy, not only on assignment test.</p>
+
+    <h2>1. Stage A1 LoRA</h2>
+    <ul>
+      <li>Data: ~80k quality-weighted Stage A subsample (MILPaC + Anuvaad; judiciary capped)</li>
+      <li>LoRA: decoder_attn r=16 alpha=32, ~0.5% params</li>
+      <li>Steps: 3000; LR ~1e-4 from base</li>
+      <li>Config: <code>configs/training.yaml</code> / <code>training_h200.yaml</code></li>
+    </ul>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Suite</th><th>BLEU</th><th>chrF++</th><th>Delta vs ZS (BLEU / chrF)</th></tr></thead>
+        <tbody>
+          <tr><td>I_test</td><td class="num">21.67</td><td class="num">49.16</td><td class="num">+2.82 / +4.42</td></tr>
+          <tr><td>E_milpac</td><td class="num">34.66</td><td class="num">55.98</td><td class="num">+0.38 / +0.76</td></tr>
+          <tr><td>E_anuvaad</td><td class="num">45.17</td><td class="num">64.33</td><td class="num">+5.78 / +4.25</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p><strong>Status:</strong> worked. Domain legal register improves without full fine-tune.</p>
+
+    <h2>2. Stage A2 LoRA (production)</h2>
+    <ul>
+      <li>Resume A1 adapters</li>
+      <li>Data: 150k Stage A subsample</li>
+      <li>Lower LR 5e-5, 3000 steps, dual-GPU H200 DDP for wall-clock</li>
+      <li>Config: <code>configs/training_h200_A2.yaml</code></li>
+      <li>Run: <code>nllb600_A_A2_h200_A2_ddp2_20260726T212958Z</code></li>
+    </ul>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Suite</th><th>BLEU</th><th>chrF++</th></tr></thead>
+        <tbody>
+          <tr><td>I_test</td><td class="num">21.86</td><td class="num">49.66</td></tr>
+          <tr><td>E_milpac</td><td class="num">34.90</td><td class="num">56.46</td></tr>
+          <tr><td>E_anuvaad</td><td class="num">45.80</td><td class="num">64.83</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout ok">
+      <div class="label">Ship</div>
+      <p>
+        Best dual-policy point. Checkpoint:
+        <code>.../checkpoints/best_primary</code>
+      </p>
+    </div>
+
+    <h2>3. Stage B -- assignment specialize (failed anti-forget)</h2>
+    <ul>
+      <li>Data: assignment train only (1,136 pairs)</li>
+      <li>Resume A2; shorter run, lower LR</li>
+      <li>Config: <code>configs/training_h200_B.yaml</code></li>
+    </ul>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Suite</th><th>BLEU</th><th>chrF++</th><th>vs A2</th></tr></thead>
+        <tbody>
+          <tr><td>I_test</td><td class="num">23.10</td><td class="num">48.89</td><td>BLEU up, chrF slightly down</td></tr>
+          <tr><td>E_milpac</td><td class="num">30.92</td><td class="num">51.22</td><td>chrF drop ~5.24 -- fail bar 2.0</td></tr>
+          <tr><td>E_anuvaad</td><td class="num">40.44</td><td class="num">59.60</td><td>regresses</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      <strong>Lesson:</strong> assignment-only specialization overfits Policy I. Without external
+      replay, the model forgets broader legal Hindi. Ablation only -- not production.
+    </p>
+
+    <h2>4. Stage B' -- replay mix (method works, still not winner)</h2>
+    <p>
+      Mix all assignment train with ~10% A2 domain replay (seed 42, exact pair dedup).
+      Config: <code>configs/training_h200_Bp.yaml</code>.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Suite</th><th>BLEU</th><th>chrF++</th></tr></thead>
+        <tbody>
+          <tr><td>I_test</td><td class="num">22.22</td><td class="num">49.41</td></tr>
+          <tr><td>E_milpac</td><td class="num">33.82</td><td class="num">54.84</td></tr>
+          <tr><td>E_anuvaad</td><td class="num">43.46</td><td class="num">62.51</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      E_milpac chrF drop vs A2 ~1.62 (passes &lt;=2.0). Prefer B' over pure B as a specialize recipe,
+      but dual-policy production remains A2.
+    </p>
+
+    <h2>Optional: DoRA ablation</h2>
+    <p>
+      Weight-decomposed LoRA on A2 data from base (<code>configs/training_h200_A2_dora.yaml</code>).
+      Method support is in code/tests; production still A2 LoRA unless dual-policy improves.
+    </p>
+
+    <h2>Ops notes (H200)</h2>
+    <ul>
+      <li><code>torch.compile</code> disabled under DDP (NCCL hang after first loss_eval).</li>
+      <li>bf16 + Flash/mem-efficient SDPA; fused AdamW when available.</li>
+      <li>Same data / LoRA surface / steps as local; dual GPU only changes wall clock.</li>
+    </ul>
+  </div>
+  <script src="../js/site.js"></script>
+</body>
+</html>

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Track C</title>
+  <link rel="stylesheet" href="../css/story.css" />
+</head>
+<body data-page="track-c">
+  <div id="page-source" data-title="Track C -- custom vocab journey" data-kicker="Phase 3">
+    <p>
+      Track C asks whether domain tokenization can be integrated into the MT model itself.
+      Packing results were strong. Translation quality after short adaptation was not. The negative
+      results are intentional science for the assignment's "optional vocab merge/extend" bullet.
+    </p>
+
+    <h2>C0 -- SPM freeze (worked)</h2>
+    <p>
+      Freeze: <code>sentencepiece_legal_v2_joint_full_41000.model</code>
+      (<code>src.config.SPM_V2_PRIMARY</code>). Joint EN+HI Unigram; never fit on assignment
+      dev/test. See <a href="tokenizers.html">Tokenizers</a> for packing tables.
+    </p>
+    <p><strong>Status:</strong> shipped as Track C production tokenizer freeze.</p>
+
+    <h2>C1a -- from-scratch Marian (stopped)</h2>
+    <p>
+      Scaffold: <code>train_legal_mt.py</code> + <code>legal_mt_model.py</code> + SPM wrapper.
+      Train a small enc-dec from scratch with the domain vocab on Stage A subsets.
+    </p>
+    <p>
+      <strong>Why stopped:</strong> 80k bitext is not enough to replace NLLB multilingual priors for
+      legal quality. Kept as infrastructure, not a quality path.
+    </p>
+
+    <h2>C1c v1 -- bulk NLLB vocab-extend (failed hard)</h2>
+    <p>
+      Script: <code>vocab_extend_nllb.py</code>. Add ~8k raw SPM piece strings to NLLB tokenizer;
+      resize embeddings; train full <code>embed_tokens</code> via PEFT <code>modules_to_save</code>
+      plus decoder_attn LoRA on A1 data.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Suite</th><th>BLEU</th><th>chrF++</th><th>vs ZS chrF</th></tr></thead>
+        <tbody>
+          <tr><td>I_test</td><td class="num">6.38</td><td class="num">24.86</td><td class="num">-19.88</td></tr>
+          <tr><td>E_milpac</td><td class="num">10.66</td><td class="num">28.63</td><td class="num">-26.59</td></tr>
+          <tr><td>E_anuvaad</td><td class="num">15.65</td><td class="num">34.35</td><td class="num">-25.73</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      <strong>Failure mode:</strong> bulk <code>add_tokens</code> can split good NLLB singles and
+      destabilize the embedding table. Ablation only.
+    </p>
+
+    <h2>C1c v2 -- careful extend (method OK, quality fail)</h2>
+    <p>Script: <code>vocab_extend_nllb_v2.py</code>. Rules:</p>
+    <ol>
+      <li>Surface forms only (strip SPM underline).</li>
+      <li>Add only if base NLLB fragments into &gt;= 2 pieces.</li>
+      <li>Reject protected-substring / probe regressions (e.g. keep न्यायालय intact).</li>
+      <li>Mean-init new rows from base subword embeddings.</li>
+      <li>Train LoRA + grad-mask only new emb rows (<code>new_embed_start</code>).</li>
+    </ol>
+    <p>
+      <strong>Checkpoint bug found:</strong> with <code>modules_to_save=null</code>, PEFT saved
+      LoRA only (~12MB) and dropped trained emb rows. Fix: write
+      <code>new_embed_rows.pt</code> and apply on load/eval. Retrain required before scoring.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Suite</th><th>BLEU</th><th>chrF++</th><th>vs ZS</th><th>vs A2 chrF</th></tr></thead>
+        <tbody>
+          <tr><td>I_test</td><td class="num">17.79</td><td class="num">43.86</td><td class="num">-1.06 / -0.88</td><td class="num">-5.80</td></tr>
+          <tr><td>E_milpac</td><td class="num">28.20</td><td class="num">49.78</td><td class="num">-6.08 / -5.44</td><td class="num">-6.68</td></tr>
+          <tr><td>E_anuvaad</td><td class="num">37.64</td><td class="num">58.46</td><td class="num">-1.75 / -1.62</td><td class="num">-6.37</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout fail">
+      <div class="label">Decision</div>
+      <p>
+        Careful extend is documented methodology, not a quality win on an A1 budget. Production
+        stays Track D A2. Optional later research: longer emb warm-up or C1c -&gt; A2 resume.
+      </p>
+    </div>
+
+    <h2>Takeaway for the assignment</h2>
+    <p>
+      Optional vocab work was completed with controls (v1 vs v2, probes, emb save). The honest
+      answer is that token packing improved under domain SPM, but integrating that vocab into NLLB
+      did not beat stock priors under light adaptation -- so production refuses the fancy path.
+    </p>
+  </div>
+  <script src="../js/site.js"></script>
+</body>
+</html>

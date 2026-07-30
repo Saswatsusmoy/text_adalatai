@@ -1,7 +1,10 @@
 # Interview walkthrough -- Adalat AI
 
 Use this doc to walk the codebase phase by phase. Full numbers live in
-`REPORT.md` and `docs/EXPERIMENTS.md`. Interactive story: `story/index.html`.
+`REPORT.md` and `docs/EXPERIMENTS.md`.
+
+**Primary presentation site (multi-page docs):** open [`story/index.html`](../story/index.html)
+in a browser. Each chapter is a separate HTML page with self-contained explanations.
 
 **Rule:** every experiment that ran still has code + config + (where small) metrics
 under `data/analysis/`. Nothing was deleted for this modularization.

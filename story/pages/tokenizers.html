@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tokenizers</title>
+  <link rel="stylesheet" href="../css/story.css" />
+</head>
+<body data-page="tokenizers">
+  <div id="page-source" data-title="Tokenizer analysis" data-kicker="Phase 2">
+    <p>
+      Assignment pillar 1: measure and reduce Indic token inefficiency. We compared tokenizer
+      families on the legal EN-HI pairs, trained domain SentencePiece models, froze a production
+      SPM for Track C experiments, and tested whether vocab-extending NLLB improves translation
+      (it did not, on this budget -- see Track C).
+    </p>
+
+    <h2>What was measured</h2>
+    <ul>
+      <li>Hindi <strong>chars per token</strong> (higher = denser packing)</li>
+      <li><strong>HI / EN token ratio</strong> (closer to 1 = less Indic overhead vs English)</li>
+      <li><strong>Total tokens</strong> on the corpus (proxy for context length and cost)</li>
+      <li>Whether Devanagari exists as first-class pieces or falls back to UTF-8 bytes</li>
+    </ul>
+    <p>Code: <code>src/tokenizer/benchmark.py</code>, <code>deep_dive.py</code>. JSON dumps under
+      <code>data/analysis/tokenizer_*.json</code>.</p>
+
+    <h2>Family-level findings</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Family</th><th>Examples</th><th>Hindi on legal text</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Char-aware SentencePiece Unigram</td>
+            <td>domain SPM, Gemma-class SP</td>
+            <td>Strong -- Devanagari first-class</td>
+          </tr>
+          <tr>
+            <td>Multilingual BPE with Dev pieces</td>
+            <td>NLLB, OpenAI o200k</td>
+            <td>Good packing</td>
+          </tr>
+          <tr>
+            <td><strong>Byte-level BPE</strong></td>
+            <td>many Llama-line models</td>
+            <td><strong>Weak</strong> -- often 0 Dev vocab entries; UTF-8 byte split; ~1.1-2.7x HI cost</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout warn">
+      <div class="label">Important distinction</div>
+      <p>
+        The failure mode is <strong>byte-level / Devanagari-blind BPE</strong>, not "all BPE".
+        SentencePiece <code>model_type=bpe</code> is still Unicode-aware. Domain work uses Unigram SP.
+      </p>
+    </div>
+
+    <h2>Domain SentencePiece v1 (mono legal HI)</h2>
+    <p>
+      Trained Unigram models on ~14M characters of Hindi from Prarabdha Indian legal SFT data
+      (Apache 2.0), sizes 16k / 32k / 41k, <code>character_coverage=1.0</code>.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Model</th><th>Vocab</th><th>HI c/t</th><th>HI/EN</th><th>Total tok</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Domain SP 41k</strong></td><td class="num">41k</td><td class="num">3.84</td><td class="num">0.743</td><td class="num">53,124</td></tr>
+          <tr><td>Domain SP 32k</td><td class="num">32k</td><td class="num">3.70</td><td class="num">0.751</td><td class="num">54,789</td></tr>
+          <tr><td>Domain SP 16k</td><td class="num">16k</td><td class="num">3.33</td><td class="num">0.772</td><td class="num">59,833</td></tr>
+          <tr><td>Gemma 4 SP (ref)</td><td class="num">262k</td><td class="num">3.42</td><td class="num">0.800</td><td class="num">57,095</td></tr>
+          <tr><td>GPT-4o o200k (ref)</td><td class="num">200k</td><td class="num">2.97</td><td class="num">0.949</td><td class="num">60,034</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      Domain SP 41k beats large general tokenizers on this legal bench despite far less pretraining
+      data. Legal terms often encode as single pieces: न्यायालय, अपीलार्थी, अनुच्छेद, अधिकारिता.
+    </p>
+
+    <h2>Domain SentencePiece v2 (Track C0 freeze)</h2>
+    <p>
+      Joint EN+HI Unigram trained from Stage A legal bitext + assignment <strong>train only</strong>
+      (dev/test docs hard-excluded in code). Full joint train on 16GB via exact-line dedupe and a
+      memory profile (not byte-level BPE).
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Model</th><th>HI c/t (held-out)</th><th>HI/EN</th><th>Total tok</th><th>Note</th></tr></thead>
+        <tbody>
+          <tr><td>v2 HI-only 41k</td><td class="num">4.46</td><td class="num">0.43</td><td class="num">14,880</td><td>HI packs best; EN fragmented</td></tr>
+          <tr><td><strong>v2 joint_full 41k</strong></td><td class="num">4.37</td><td class="num">0.72</td><td class="num">10,978</td><td>Track C freeze</td></tr>
+          <tr><td>v1 Prarabdha 41k</td><td class="num">3.95</td><td class="num">0.74</td><td class="num">11,965</td><td>mono HI baseline</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Vocab size ablation (same joint corpus)</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Size</th><th>Held-out total tokens</th><th>Decision</th></tr></thead>
+        <tbody>
+          <tr><td class="num">41k</td><td class="num">10,978</td><td>Freeze -- emb size / overfit tradeoff</td></tr>
+          <tr><td class="num">48k</td><td class="num">10,937</td><td>Ablation only</td></tr>
+          <tr><td class="num">64k</td><td class="num">10,819</td><td>Best packing (~1.4% fewer tokens); larger emb</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <pre class="codeblock">data/models/tokenizers/sentencepiece_legal_v2_joint_full_41000.model
+# src.config.SPM_V2_PRIMARY</pre>
+
+    <h2>Integration strategy</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Track</th><th>Idea</th><th>Outcome</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>D production</strong></td>
+            <td>Keep NLLB native tokenizer; adapt model with LoRA</td>
+            <td>Shipped (A2)</td>
+          </tr>
+          <tr>
+            <td>C science</td>
+            <td>Domain SPM + model adapt / vocab-extend</td>
+            <td>C0 freeze done; C1c quality fail on dual policy</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      <strong>Why production keeps NLLB tokens:</strong> packing wins from domain SPM do not
+      automatically become quality wins after short LoRA. Vocab surgery without long embedding
+      warm-up lost dual-policy quality (Track C pages). For legal fidelity, LoRA on stock NLLB won.
+    </p>
+
+    <h2>Reproduce</h2>
+    <pre class="codeblock">make tokenizer-train-all          # v1 mono HI (needs Prarabdha download)
+make tokenizer-c0                 # v2 corpus + train + bench
+make tokenizer-spm-v2-full-joint  # full joint 41k path
+make tokenizer-bench</pre>
+  </div>
+  <script src="../js/site.js"></script>
+</body>
+</html>

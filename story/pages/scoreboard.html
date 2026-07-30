@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Scoreboard</title>
+  <link rel="stylesheet" href="../css/story.css" />
+</head>
+<body data-page="scoreboard">
+  <div id="page-source" data-title="Quantitative scoreboard" data-kicker="Results">
+    <p>
+      All systems use the same decode protocol: beam 4, max_new 256, max_in 256. Final board from
+      H200 CUDA bf16 batch 32. Metrics: sacreBLEU BLEU and chrF++ (word_order=2). Machine dumps:
+      <code>data/analysis/*_report.json</code> and <code>final_dual_policy_report.json</code>.
+    </p>
+
+    <h2>Full dual-policy table (BLEU / chrF++)</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>System</th>
+            <th>I_test</th>
+            <th>E_milpac</th>
+            <th>E_anuvaad</th>
+            <th>Note</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Zero-shot NLLB</td>
+            <td class="num">18.85 / 44.74</td>
+            <td class="num">34.28 / 55.22</td>
+            <td class="num">39.39 / 60.08</td>
+            <td>baseline floor</td>
+          </tr>
+          <tr>
+            <td>D A1 LoRA</td>
+            <td class="num">21.67 / 49.16</td>
+            <td class="num">34.66 / 55.98</td>
+            <td class="num">45.17 / 64.33</td>
+            <td>first Stage A win</td>
+          </tr>
+          <tr>
+            <td><strong>D A2 LoRA (prod)</strong></td>
+            <td class="num"><strong>21.86 / 49.66</strong></td>
+            <td class="num"><strong>34.90 / 56.46</strong></td>
+            <td class="num"><strong>45.80 / 64.83</strong></td>
+            <td>best dual policy</td>
+          </tr>
+          <tr>
+            <td>D Stage B</td>
+            <td class="num">23.10 / 48.89</td>
+            <td class="num">30.92 / 51.22</td>
+            <td class="num">40.44 / 59.60</td>
+            <td>I BLEU up; E fail</td>
+          </tr>
+          <tr>
+            <td>D Stage B' replay</td>
+            <td class="num">22.22 / 49.41</td>
+            <td class="num">33.82 / 54.84</td>
+            <td class="num">43.46 / 62.51</td>
+            <td>E recovered; not dual winner</td>
+          </tr>
+          <tr>
+            <td>C1c v2 careful A1</td>
+            <td class="num">17.79 / 43.86</td>
+            <td class="num">28.20 / 49.78</td>
+            <td class="num">37.64 / 58.46</td>
+            <td>below zero-shot</td>
+          </tr>
+          <tr>
+            <td>C1c v1 bulk A1</td>
+            <td class="num">6.38 / 24.86</td>
+            <td class="num">10.66 / 28.63</td>
+            <td class="num">15.65 / 34.35</td>
+            <td>catastrophic ablation</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>A2 deltas vs zero-shot</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Suite</th><th>Delta BLEU</th><th>Delta chrF++</th></tr></thead>
+        <tbody>
+          <tr><td>I_test</td><td class="num">+3.01</td><td class="num">+4.92</td></tr>
+          <tr><td>E_milpac</td><td class="num">+0.62</td><td class="num">+1.24</td></tr>
+          <tr><td>E_anuvaad</td><td class="num">+6.41</td><td class="num">+4.75</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>How to read the board</h2>
+    <ul>
+      <li><strong>chrF++</strong> is the primary quality metric for Hindi (character n-grams + word unigrams).</li>
+      <li><strong>BLEU</strong> is reported for completeness; alone it under-represents HI morphology.</li>
+      <li><strong>I vs E:</strong> I is the assignment stress test; E catches overfit to 30 docs.</li>
+      <li><strong>Stage B</strong> is the classic trap: better I BLEU, worse dual policy.</li>
+      <li><strong>C1c</strong> shows tokenizer surgery cost: method improvements (v2) still lost quality on A1 budget.</li>
+    </ul>
+
+    <h2>Token usage before/after (packing, not NLLB decode cost)</h2>
+    <p>
+      Domain SP 41k vs general tokenizers on assignment pairs (total tokens; lower is cheaper):
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Tokenizer</th><th>Total tokens</th><th>HI c/t</th></tr></thead>
+        <tbody>
+          <tr><td>Domain SP 41k</td><td class="num">53,124</td><td class="num">3.84</td></tr>
+          <tr><td>Gemma 4 SP</td><td class="num">57,095</td><td class="num">3.42</td></tr>
+          <tr><td>GPT-4o o200k</td><td class="num">60,034</td><td class="num">2.97</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      Production MT still uses NLLB native tokens; quality gains in the MT table come from LoRA,
+      not from shrinking the NLLB vocab.
+    </p>
+
+    <h2>Optional metric not run</h2>
+    <p>COMET / CometKiwi -- optional in the brief; listed under future work.</p>
+  </div>
+  <script src="../js/site.js"></script>
+</body>
+</html>

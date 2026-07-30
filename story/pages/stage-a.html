@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Stage A data</title>
+  <link rel="stylesheet" href="../css/story.css" />
+</head>
+<body data-page="stage-a">
+  <div id="page-source" data-title="External Stage A legal bitext" data-kicker="Phase 1b">
+    <p>
+      The assignment corpus yields only ~1.5k clean pairs after alignment. That is enough for
+      evaluation and light specialization, but not enough for serious domain adaptation. Stage A
+      adds public legal EN-HI bitext at scale, then carves dual-policy holdouts so train never
+      touches the external tests.
+    </p>
+
+    <h2>Sources</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Source</th><th>License</th><th>Role</th></tr></thead>
+        <tbody>
+          <tr><td>MILPaC (Law-AI)</td><td>CC BY-NC-SA 4.0</td><td>Clean legal EN-HI pairs</td></tr>
+          <tr><td>Anuvaad legal EN-HI</td><td>CC BY 4.0</td><td>Scale: judiciary, HC/SUVAS, law commission, terms, names, augmented</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      Both sources are already aligned upstream. We do <strong>not</strong> re-OCR or re-run LaBSE on
+      the full pool (cost would dominate with little gain). Schema normalize + shared length QC only.
+    </p>
+
+    <h2>Ingest pipeline</h2>
+    <pre class="codeblock">make external-download   # optional fetch into data/external/raw/
+make external-ingest     # -&gt; data/external/parallel/*.jsonl
+make external-eval-split # Policy E holdouts + stage_a_train.jsonl</pre>
+    <p>Module: <code>src/preprocessing/ingest_external_parallel.py</code>.</p>
+    <p>Filters (aligned with assignment QC philosophy): EN:HI char ratio 0.3-3.0, min length &gt; 3,
+      exact (en, hi) pair dedup. No LaBSE re-score.</p>
+
+    <h2>Outputs (approximate counts after freeze)</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>File</th><th>Role</th><th>Count</th></tr></thead>
+        <tbody>
+          <tr><td><code>stage_a_en_hi.jsonl</code></td><td>Full filtered pool</td><td class="num">~993k</td></tr>
+          <tr><td><code>stage_a_train.jsonl</code></td><td>MT Stage A train only</td><td class="num">~988,331</td></tr>
+          <tr><td><code>eval/milpac_dev.jsonl</code></td><td>Policy E MILPaC dev</td><td class="num">117</td></tr>
+          <tr><td><code>eval/milpac_test.jsonl</code></td><td>Policy E MILPaC test</td><td class="num">117</td></tr>
+          <tr><td><code>eval/anuvaad_dev.jsonl</code></td><td>Policy E Anuvaad dev</td><td class="num">1,000</td></tr>
+          <tr><td><code>eval/anuvaad_test.jsonl</code></td><td>Policy E Anuvaad test</td><td class="num">3,000</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Curriculum subsamples (training efficiency)</h2>
+    <p>
+      Full 988k is unnecessary for every experiment. <code>src/training/subsample.py</code> builds
+      frozen curricula from <code>stage_a_train</code>:
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Tag</th><th>Approx size</th><th>Use</th></tr></thead>
+        <tbody>
+          <tr><td>smoke</td><td class="num">2,000</td><td>Wiring / CI-ish local smoke</td></tr>
+          <tr><td>A1</td><td class="num">~80,000</td><td>First LoRA stage (quality-weighted sources, judiciary cap)</td></tr>
+          <tr><td>A2</td><td class="num">150,000</td><td>Scale stage, resume A1</td></tr>
+          <tr><td>Bp</td><td class="num">assignment + ~10% A2 replay</td><td>Anti-forget Stage B experiment</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout warn">
+      <div class="label">Firewall</div>
+      <p>
+        Assignment test docs never enter Stage A training. Policy E pairs never enter
+        <code>stage_a_train.jsonl</code>. Validation: <code>python -m src.evaluation.eval_sets</code>.
+      </p>
+    </div>
+  </div>
+  <script src="../js/site.js"></script>
+</body>
+</html>

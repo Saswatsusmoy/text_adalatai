@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Qualitative examples</title>
+  <link rel="stylesheet" href="../css/story.css" />
+</head>
+<body data-page="qualitative">
+  <div id="page-source" data-title="Qualitative evaluation" data-kicker="Results">
+    <p>
+      Automatic metrics understate legal register. These Policy I examples compare
+      <strong>zero-shot NLLB</strong> to <strong>A2 LoRA</strong> on terms, party roles, and formal
+      phrasing. References can be OCR-truncated; examples focus on relative improvement.
+      Full hyps: <code>data/analysis/zero_shot_nllb_I_test_hyps.jsonl</code>,
+      <code>nllb600_A2_h200_best_I_test_hyps.jsonl</code>.
+    </p>
+
+    <h2>1. Legal term -- revisional court / Article 227</h2>
+    <div class="card">
+      <div class="kv"><span>EN</span>
+        <p>Assailing the order of the revisional court, the appellant filed a petition under Article 227 of the Constitution of India, invoking the supervisory jurisdiction of the High Court of Judicature at Allahabad.</p>
+      </div>
+      <div class="kv"><span>Reference (partial)</span>
+        <p class="hi-text">पुनरीक्षण अदालत के आदेश को चुनौती देते हुए, अपीलकर्ता ने भारत के संविधान के अनुच्छेद 227 के तहत ...</p>
+      </div>
+      <div class="kv zs"><span>Zero-shot</span>
+        <p class="hi-text">पुनरावलोकन अदालत के आदेश पर बल देते हुए ... (uses "review" sense, wrong legal term)</p>
+      </div>
+      <div class="kv a2"><span>A2 LoRA</span>
+        <p class="hi-text">पुनरीक्षण न्यायालय के आदेश पर बल देते हुए, अपीलकर्ता ने भारत के संविधान के अनुच्छेद 227 के तहत एक याचिका दायर की ...</p>
+      </div>
+      <div class="takeaway">A2 recovers domain term पुनरीक्षण (revisional) over zero-shot पुनरावलोकन.</div>
+    </div>
+
+    <h2>2. Constitutional jurisdiction -- Article 142</h2>
+    <div class="card">
+      <div class="kv"><span>EN</span>
+        <p>We also direct, in exercise of our jurisdiction under Article 142 of the Constitution of India, that his salary should be paid over for the period for which he works until a regular candidate is appointed.</p>
+      </div>
+      <div class="kv zs"><span>Zero-shot</span>
+        <p class="hi-text">... अनुच्छेद 142 ... अधिकार क्षेत्र ...</p>
+      </div>
+      <div class="kv a2"><span>A2 LoRA</span>
+        <p class="hi-text">... अनुच्छेद 142 ... अधिकारिता ... (more formal legal register for jurisdiction)</p>
+      </div>
+      <div class="takeaway">Register shifts toward formal legal Hindi after domain LoRA.</div>
+    </div>
+
+    <h2>3. Writ petition compound</h2>
+    <div class="card">
+      <div class="kv"><span>EN</span>
+        <p>7 The writ petition filed by the appellant was dismissed by a learned Single Judge of the High Court on 9 October 2013.</p>
+      </div>
+      <div class="kv zs"><span>Zero-shot</span>
+        <p class="hi-text">... दायर याचिका ... (drops "writ")</p>
+      </div>
+      <div class="kv a2"><span>A2 LoRA</span>
+        <p class="hi-text">... दायर रिट याचिका ...</p>
+      </div>
+      <div class="takeaway">Compound legal noun रिट याचिका preserved after FT.</div>
+    </div>
+
+    <h2>4. Party role -- appellant vs petitioner</h2>
+    <div class="card">
+      <div class="kv"><span>EN</span>
+        <p>dismissing the Writ Petition filed by the Appellant.</p>
+      </div>
+      <div class="kv zs"><span>Zero-shot</span>
+        <p class="hi-text">याचिकाकर्ता द्वारा दायर लिखित याचिका ... (petitioner -- wrong role)</p>
+      </div>
+      <div class="kv a2"><span>A2 LoRA</span>
+        <p class="hi-text">अपीलकर्ता द्वारा दायर लिखित याचिका ...</p>
+      </div>
+      <div class="takeaway">Party terminology fidelity matters in judgments.</div>
+    </div>
+
+    <h2>5. Archaic / formal legal English</h2>
+    <div class="card">
+      <div class="kv"><span>EN</span>
+        <p>It was also observed by the revisional court that although it was averred by the appellant that he was put in dark by the counsel earlier engaged by him, there is no reference to his name.</p>
+      </div>
+      <div class="kv zs"><span>Zero-shot</span>
+        <p class="hi-text">पुनरावलोकन ... English leak "appellant" ... वकील</p>
+      </div>
+      <div class="kv a2"><span>A2 LoRA</span>
+        <p class="hi-text">पुनरीक्षण ... अपीलकर्ता ... अधिवक्ता</p>
+      </div>
+      <div class="takeaway">Less English leak; advocate register over colloquial counsel.</div>
+    </div>
+
+    <h2>Residual issues (honest)</h2>
+    <ul>
+      <li>"Impugned order" often remains bare आदेश rather than आक्षेपित आदेश in both systems.</li>
+      <li>OCR references can be truncated or year-noisy; automatic scores mix model and ref error.</li>
+      <li>Long multi-clause sentences still need legal QA for production use.</li>
+    </ul>
+  </div>
+  <script src="../js/site.js"></script>
+</body>
+</html>

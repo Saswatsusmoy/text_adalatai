@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dual-track plan</title>
+  <link rel="stylesheet" href="../css/story.css" />
+</head>
+<body data-page="tracks">
+  <div id="page-source" data-title="Dual-track research plan" data-kicker="Plan">
+    <p>
+      After tokenizer science and Stage A data, MT work splits into two tracks that share the same
+      frozen assignment splits and the same dual-policy tests. That keeps comparisons fair.
+    </p>
+
+    <div class="card-grid two">
+      <article class="card track prod">
+        <span class="badge ship">production</span>
+        <h3>Track D -- Defaults</h3>
+        <p>
+          Stock NLLB-600M with its native multilingual tokenizer. Adapt with PEFT LoRA only.
+          Safety net: quality without embedding surgery.
+        </p>
+        <p class="mono">src/training/train_nllb_lora.py</p>
+      </article>
+      <article class="card track">
+        <span class="badge sci">science</span>
+        <h3>Track C -- Custom vocab</h3>
+        <p>
+          Domain SPM freeze (joint_full 41k), then try to make a model use that vocab:
+          C1a from-scratch Marian, C1c NLLB vocab-extend + LoRA.
+        </p>
+        <p class="mono">src/training/vocab_extend_nllb*.py · train_legal_mt.py</p>
+      </article>
+    </div>
+
+    <h2>Why dual-track</h2>
+    <ul>
+      <li><strong>Track D</strong> answers: "What is the best practical adapter for legal EN-HI?"</li>
+      <li><strong>Track C</strong> answers: "Does domain tokenization improve packing enough to justify model surgery?"</li>
+    </ul>
+    <p>
+      Both are assignment-relevant. Production chooses quality. Science documents packing and the
+      negative transfer of careless vocab extend.
+    </p>
+
+    <h2>Execution order (actual)</h2>
+    <ol>
+      <li>Freeze data contract (doc IDs, dual policies).</li>
+      <li>C0: train/freeze joint_full_41000 SPM.</li>
+      <li>D: zero-shot NLLB on I + E.</li>
+      <li>D: Stage A1 then A2 LoRA.</li>
+      <li>D: Stage B (+ later B' replay) anti-forget check.</li>
+      <li>C1c: bulk v1 ablation + careful v2 + full I+E.</li>
+      <li>Head-to-head table; production = D A2.</li>
+      <li>Report + this walkthrough.</li>
+    </ol>
+
+    <h2>LoRA defaults (Track D)</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Item</th><th>Choice</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>Base</td><td>nllb-200-distilled-600M</td><td>Strong EN-HI prior; 600M is single-GPU friendly with LoRA</td></tr>
+          <tr><td>Profile</td><td>decoder_attn (self + cross attn)</td><td>Cross-attn is MT hinge; ~0.5% params</td></tr>
+          <tr><td>Rank / alpha</td><td>r=16, alpha=32</td><td>Stable PEFT default for this size</td></tr>
+          <tr><td>Selection</td><td>weighted dev chrF++ dual policy</td><td>Not train loss alone</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>Next: <a href="track-d.html">Track D journey</a> · <a href="track-c.html">Track C journey</a></p>
+  </div>
+  <script src="../js/site.js"></script>
+</body>
+</html>

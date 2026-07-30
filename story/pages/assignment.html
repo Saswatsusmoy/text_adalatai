@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Assignment map</title>
+  <link rel="stylesheet" href="../css/story.css" />
+</head>
+<body data-page="assignment">
+  <div id="page-source" data-title="Assignment map" data-kicker="Start">
+    <p>
+      The ML assignment asks for a prototype legal EN-&gt;HI system with five workstreams and two
+      deliverables (report + modular code). This page maps every requirement to concrete work in
+      this repository so a reader (or interviewer) can verify completeness without hunting.
+    </p>
+
+    <h2>Objective (from the brief)</h2>
+    <ol>
+      <li>Improve token efficiency for Indic languages (e.g. Hindi) under LLMs.</li>
+      <li>Perform small-scale fine-tuning / adaptation for high-fidelity domain translation.</li>
+    </ol>
+    <p>
+      Scope is prototype-level (about 12-16 focused hours). This project intentionally went deeper
+      on dual-track research, but the <em>submittable</em> path still has a single-GPU smoke recipe.
+    </p>
+
+    <h2>Task 1 -- Evaluate and optimize tokenization</h2>
+    <p><strong>Asked:</strong> compare at least two tokenizers; analyze token-per-word-like ratios,
+      input length / inference cost; optional vocab merge/extend.</p>
+    <p><strong>Done:</strong></p>
+    <ul>
+      <li>Cross-family survey: SentencePiece Unigram, multilingual BPE (NLLB / o200k), byte-level BPE (Llama-line).</li>
+      <li>Metrics: HI chars/token, HI/EN token ratio, total tokens on 1,458 pairs.</li>
+      <li>Domain SPM v1 (Prarabdha mono HI 16/32/41k) and v2 joint full Unigram (41/48/64k ablation).</li>
+      <li>Optional vocab extend on NLLB (C1c v1 bulk, C1c v2 careful) with embedding updates.</li>
+    </ul>
+    <p><strong>Where:</strong> <code>src/tokenizer/</code>, <code>src/training/vocab_extend_nllb*.py</code>,
+      page <a href="tokenizers.html">Tokenizers</a>, dumps in <code>data/analysis/tokenizer_*.json</code>.</p>
+
+    <h2>Task 2 -- Prepare the dataset</h2>
+    <p><strong>Asked:</strong> light preprocessing; train/dev/test ~80/10/10; keep sentence alignment
+      and legal formatting where possible.</p>
+    <p><strong>Done:</strong></p>
+    <ul>
+      <li>Hindi OCR (Tesseract), EN line join, spaCy/danda segmentation, LaBSE mutual-best alignment.</li>
+      <li>Filters: min similarity 0.5, EN:HI char ratio 0.3-3.0, near-dedup.</li>
+      <li>Document-level split seed 42 -&gt; 1,136 / 132 / 190 (not sentence-random).</li>
+      <li>Optional public legal parallel: MILPaC + Anuvaad Stage A (~993k filtered).</li>
+    </ul>
+    <p><strong>Where:</strong> <code>src/preprocessing/</code>, page <a href="pipeline.html">Data pipeline</a>.</p>
+
+    <h2>Task 3 -- Model adaptation</h2>
+    <p><strong>Asked:</strong> lightweight translation model; light FT; LoRA/adapters; update embeddings
+      if tokenization changes; single-GPU feasible.</p>
+    <p><strong>Done:</strong></p>
+    <ul>
+      <li>Model: <code>facebook/nllb-200-distilled-600M</code> (enc-dec MT, not a chat LLM).</li>
+      <li>PEFT LoRA profile <code>decoder_attn</code>, ~0.5% trainable params.</li>
+      <li>Curriculum: smoke -&gt; A1 (80k) -&gt; A2 (150k resume); Stage B / B' ablations.</li>
+      <li>Vocab path: Marian C1 scaffold; C1c extend with emb resize / grad-mask / <code>new_embed_rows.pt</code>.</li>
+      <li>Configs: <code>configs/training.yaml</code> (local) and <code>configs/training_h200*.yaml</code> (optional remote).</li>
+    </ul>
+    <p><strong>Where:</strong> <code>src/training/</code>, pages <a href="track-d.html">Track D</a> and
+      <a href="track-c.html">Track C</a>.</p>
+
+    <h2>Task 4 -- Evaluation</h2>
+    <p><strong>Asked:</strong> BLEU, chrF (optional COMET); qualitative legal examples; before/after
+      fidelity and token usage.</p>
+    <p><strong>Done:</strong></p>
+    <ul>
+      <li>sacreBLEU BLEU + chrF++ on Policy I and Policy E (MILPaC + Anuvaad).</li>
+      <li>Before/after: zero-shot vs A1/A2/B/C1c full tables.</li>
+      <li>Token usage tables for domain SP vs general tokenizers.</li>
+      <li>Qualitative: revisional court, Article 142, writ petition, appellant role, archaic phrasing.</li>
+      <li>COMET optional -- not run; listed as next step.</li>
+    </ul>
+    <p><strong>Where:</strong> <code>src/evaluation/</code>, pages
+      <a href="scoreboard.html">Scoreboard</a> and <a href="qualitative.html">Qualitative</a>.</p>
+
+    <h2>Task 5 -- Reflection</h2>
+    <p><strong>Asked:</strong> what worked / did not; how to improve; scale to more languages or harder legal text.</p>
+    <p><strong>Done:</strong> written reflection, failures log, scale suggestions (COMET, replay, multi-Indic, full-doc translate).</p>
+    <p><strong>Where:</strong> pages <a href="reflection.html">Reflection</a> and <a href="failures.html">Failures</a>; also <code>REPORT.md</code> §6.</p>
+
+    <h2>Deliverables</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Deliverable</th><th>Path</th></tr></thead>
+        <tbody>
+          <tr><td>Report</td><td><code>REPORT.md</code> (+ this multi-page walkthrough)</td></tr>
+          <tr><td>Tokenizer code</td><td><code>src/tokenizer/</code></td></tr>
+          <tr><td>Train / inference</td><td><code>src/training/</code>, <code>src/evaluation/zero_shot_nllb.py</code></td></tr>
+          <tr><td>Evaluation</td><td><code>src/evaluation/</code>, <code>data/analysis/*_report.json</code></td></tr>
+          <tr><td>Reproduce</td><td><code>Makefile</code>, <code>scripts/reproduce_all.sh</code>, page <a href="reproduce.html">Reproduce</a></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Scoring criteria -- how this project answers them</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Criterion</th><th>Answer</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Approach &amp; feasibility</td>
+            <td>LoRA on 600M, smoke on laptop/CPU; dual-policy prevents false wins; H200 optional for full table</td>
+          </tr>
+          <tr>
+            <td>Code quality</td>
+            <td>Four phase packages, tests, ruff, pipeline orchestrator, clean worktree reproduce</td>
+          </tr>
+          <tr>
+            <td>Evaluation &amp; insights</td>
+            <td>BLEU/chrF++ full board, qualitative legal panel, honest negatives (B, C1c)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <script src="../js/site.js"></script>
+</body>
+</html>

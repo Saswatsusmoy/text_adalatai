@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Production pick</title>
+  <link rel="stylesheet" href="../css/story.css" />
+</head>
+<body data-page="production">
+  <div id="page-source" data-title="Production decision" data-kicker="Close">
+    <div class="callout ok">
+      <div class="label">Ship</div>
+      <p>
+        <strong>Track D A2 best_primary</strong><br />
+        Base: <code>facebook/nllb-200-distilled-600M</code><br />
+        Adapters:
+        <code>data/runs/nllb600_A_A2_h200_A2_ddp2_20260726T212958Z/checkpoints/best_primary</code>
+      </p>
+    </div>
+
+    <h2>Why A2</h2>
+    <ul>
+      <li>Best joint dual-policy score across I_test, E_milpac, E_anuvaad.</li>
+      <li>Clear gains vs zero-shot without external collapse.</li>
+      <li>LoRA-only adapter is small and attachable at inference.</li>
+      <li>Curriculum A1 -&gt; A2 is reproducible from configs and Makefile.</li>
+    </ul>
+
+    <h2>Rejected systems</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>System</th><th>Why rejected</th></tr></thead>
+        <tbody>
+          <tr><td>Stage B (assignment only)</td><td>E_milpac chrF drop ~5.24 &gt; anti-forget limit 2.0</td></tr>
+          <tr><td>Stage B' replay</td><td>Anti-forget method OK; dual-policy still does not beat A2</td></tr>
+          <tr><td>C1c v2 careful extend</td><td>Below zero-shot on all three suites after A1 budget</td></tr>
+          <tr><td>C1c v1 bulk extend</td><td>Catastrophic quality collapse</td></tr>
+          <tr><td>C1a from-scratch Marian</td><td>Stopped; weak vs NLLB priors at 80k</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Inference recipe</h2>
+    <pre class="codeblock">PYTHONPATH=. python3 -m src.evaluation.zero_shot_nllb \
+  --adapters data/runs/nllb600_A_A2_h200_A2_ddp2_20260726T212958Z/checkpoints/best_primary \
+  --tag A2_best \
+  --device cuda   # or mps / cpu</pre>
+
+    <h2>Not run (optional later)</h2>
+    <ul>
+      <li>COMET / CometKiwi / legal error panel</li>
+      <li>InLegalTrans zero-shot / LoRA</li>
+      <li>C1b emb-resize path</li>
+      <li>C1c resume into A2-scale data / longer emb warm-up</li>
+      <li>DPO / QE re-rank</li>
+    </ul>
+
+    <h2>Design decisions that led here (short)</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>§</th><th>Choice</th><th>Rationale</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Tesseract OCR HI</td><td>Text-layer ligature damage</td></tr>
+          <tr><td>11</td><td>Doc-level split seed 42</td><td>No judgment leakage</td></tr>
+          <tr><td>15</td><td>Tokenizer survey</td><td>Byte-level BPE weak; domain SP strong</td></tr>
+          <tr><td>18</td><td>joint_full 41k freeze</td><td>Joint for MT; emb size tradeoff</td></tr>
+          <tr><td>20</td><td>Dual policy I+E</td><td>Catch assignment overfit</td></tr>
+          <tr><td>22</td><td>LoRA decoder_attn</td><td>MT hinge; ~0.5% params</td></tr>
+          <tr><td>25</td><td>Ship A2 not B</td><td>B fails E anti-forget</td></tr>
+          <tr><td>26</td><td>C1c over C1a; still ship D</td><td>Extend method OK; scores lose</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Full write-up: <code>DESIGN_DECISIONS.md</code>.</p>
+  </div>
+  <script src="../js/site.js"></script>
+</body>
+</html>

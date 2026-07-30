@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MBR decode</title>
+  <link rel="stylesheet" href="../css/story.css" />
+</head>
+<body data-page="mbr">
+  <div id="page-source" data-title="MBR decoding" data-kicker="Close">
+    <p>
+      Minimum Bayes Risk decoding is an inference-only ablation on top of the shipped A2
+      adapters. No retrain, no reward model, no new dependencies. Sample N candidates per
+      source, output the one whose mean pairwise sentence-chrF++ vs peers is highest
+      (Eikema &amp; Aziz 2020; Freitag et al. 2022, chrF utility).
+    </p>
+
+    <h2>Wiring</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Item</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>Module</td><td><code>src/evaluation/mbr_decode.py</code></td></tr>
+          <tr><td>CLI flags</td><td><code>--mbr --mbr-samples N --mbr-temperature T --mbr-top-p P --mbr-utility {chrf,chrfpp}</code></td></tr>
+          <tr><td>Sampling</td><td><code>do_sample=True, num_beams=1, num_return_sequences=N</code> in one <code>generate</code></td></tr>
+          <tr><td>Utility</td><td>Sentence chrF++ (word_order=2); chrF (word_order=0) selectable</td></tr>
+          <tr><td>Default N</td><td>8</td></tr>
+          <tr><td>Tag</td><td>Auto-appends <code>_mbr{N}</code> when <code>--tag</code> omitted (no beam4 clobber)</td></tr>
+          <tr><td>Make</td><td><code>eval-mbr-a2</code>, <code>eval-mbr-zs</code>, <code>eval-mbr-smoke</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Real runs (A2 adapters)</h2>
+    <p>
+      Two runs on identical data + adapters + sacreBLEU signatures, decode differs. MPS beam4
+      control isolates the confound between H200 bf16 shipped and MPS fp16 laptop run.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>System</th>
+            <th>I_test (n=190)</th>
+            <th>E_milpac_test (n=117)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>A2 beam4 (H200 bf16, shipped)</td>
+            <td class="num">21.86 / 49.66</td>
+            <td class="num">34.90 / 56.46</td>
+          </tr>
+          <tr>
+            <td>A2 beam4 (MPS fp16, control)</td>
+            <td class="num">21.85 / 49.68</td>
+            <td class="num">34.71 / 56.55</td>
+          </tr>
+          <tr>
+            <td>A2 MBR N=8 top_p=0.9 T=1.0 (MPS fp16)</td>
+            <td class="num">18.16 / 47.13</td>
+            <td class="num">31.39 / 54.07</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Device/precision delta (MPS beam4 &minus; H200 beam4): I_test &minus;0.01 / +0.02, E_milpac &minus;0.18 / +0.09 &mdash; inside noise.</p>
+    <p>Decode-only delta (MPS MBR &minus; MPS beam4): I_test <strong>&minus;3.68 BLEU / &minus;2.56 chrF++</strong>, E_milpac <strong>&minus;3.33 BLEU / &minus;2.48 chrF++</strong>.</p>
+    <p>E_anuvaad_test (n=3000) not run: ~4h on MPS at this rate.</p>
+
+    <div class="callout fail">
+      <div class="label">Verdict</div>
+      <p>
+        At N=8, top_p=0.9, T=1.0, chrF++ utility, MBR does not help. Beam4 stays shipped.
+        The confound is decode strategy, not device or precision. Negative result stands
+        only at the tried configuration.
+      </p>
+    </div>
+
+    <h2>Follow-ups not run</h2>
+    <ul>
+      <li>Lower temperature (T=0.3&ndash;0.5) or epsilon-sampling (Freitag 2022) &mdash; current top_p=0.9 T=1.0 is high-diversity and dilutes MBR consensus.</li>
+      <li>Larger N (32&ndash;128) &mdash; MBR literature typically uses N &gt;= 32; N=8 is the low end.</li>
+      <li>COMET / CometKiwi utility &mdash; reference-free QE-based MBR is where recent papers report the wins.</li>
+      <li>E_anuvaad_test full &mdash; needs H200 or overnight MPS budget.</li>
+    </ul>
+
+    <h2>Artifacts</h2>
+    <ul>
+      <li><code>data/analysis/nllb600_A2_mps_mbr8_best_report.json</code> + hyps</li>
+      <li><code>data/analysis/nllb600_A2_mps_beam4_best_report.json</code> + hyps</li>
+      <li><code>tests/evaluation/test_mbr_decode.py</code> &mdash; argmax correctness, N=1 identity, empty raises</li>
+      <li>DESIGN_DECISIONS &sect;31, docs/EXPERIMENTS.md &sect;5.4</li>
+    </ul>
+  </div>
+  <script src="../js/site.js"></script>
+</body>
+</html>

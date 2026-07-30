@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Reproduce</title>
+  <link rel="stylesheet" href="../css/story.css" />
+</head>
+<body data-page="reproduce">
+  <div id="page-source" data-title="Reproduce" data-kicker="Close">
+    <p>
+      Commands to rebuild data, tokenizers, metrics, and smoke training. Prefer Python 3.12 for
+      spaCy wheels. Full H200 curricula are optional.
+    </p>
+
+    <h2>Environment</h2>
+    <pre class="codeblock">python3.12 -m venv .venv
+source .venv/bin/activate
+make install-dev          # requirements + ruff + spaCy model
+make lint
+make test</pre>
+
+    <h2>Phase 1 -- assignment data</h2>
+    <pre class="codeblock">make preprocess
+# OCR -> join -> segment -> align -> train/dev/test
+# Expect ~1458 pairs, 1136/132/190 split</pre>
+
+    <h2>Phase 1b -- Stage A + dual policy</h2>
+    <pre class="codeblock">make external-download    # if raw files missing
+make external-ingest
+make external-eval-split
+PYTHONPATH=. python -m src.evaluation.eval_sets</pre>
+
+    <h2>Phase 2 -- tokenizers</h2>
+    <pre class="codeblock">make tokenizer-train-all
+make tokenizer-c0
+make tokenizer-spm-v2-full-joint
+make tokenizer-bench</pre>
+
+    <h2>Phase 3 -- train smokes</h2>
+    <pre class="codeblock">make train-nllb-smoke
+# full optional H200:
+# make train-nllb-A1-h200
+# make train-nllb-A2-h200   # via config training_h200_A2</pre>
+
+    <h2>Phase 4 -- evaluation</h2>
+    <pre class="codeblock">make zero-shot-nllb
+PYTHONPATH=. python -m src.evaluation.zero_shot_nllb \
+  --adapters data/runs/.../checkpoints/best_primary \
+  --tag A2_best</pre>
+
+    <h2>Orchestrator</h2>
+    <pre class="codeblock">python run_pipeline.py --list
+python run_pipeline.py --steps preprocess
+python run_pipeline.py --steps all    # data path only (not multi-hour train)
+bash scripts/reproduce_all.sh [--skip-downloads]</pre>
+
+    <h2>Open this docs site</h2>
+    <pre class="codeblock">open story/index.html
+# or: python -m http.server 8000 --directory story</pre>
+
+    <div class="callout warn">
+      <div class="label">Gitignored large artifacts</div>
+      <p>
+        <code>data/external/</code>, <code>data/models/</code>, <code>data/runs/</code> are not in
+        git. Rebuild with Makefile targets or copy from a machine that already trained/downloaded.
+      </p>
+    </div>
+  </div>
+  <script src="../js/site.js"></script>
+</body>
+</html>

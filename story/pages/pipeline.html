@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Data pipeline</title>
+  <link rel="stylesheet" href="../css/story.css" />
+</head>
+<body data-page="pipeline">
+  <div id="page-source" data-title="Data pipeline" data-kicker="Phase 1">
+    <p>
+      Assignment data starts as parallel PDFs (and legacy clean text). The pipeline turns them into
+      filtered sentence pairs and a frozen document-level train/dev/test split. External legal bitext
+      is a separate Stage A path (next pages) and is not required to finish this phase.
+    </p>
+
+    <h2>End-to-end flow</h2>
+    <pre class="codeblock">PDF EN/HI
+  -&gt; reextract_pdfs.py      # Tesseract OCR for Hindi (not PDF text layer)
+  -&gt; join_lines.py          # EN hard wraps + proper nouns
+  -&gt; segment_sentences.py   # spaCy EN; danda HI
+  -&gt; align_sentences.py     # LaBSE mutual-best + QC filters
+  -&gt; output_format.py       # doc-level 80/10/10, seed 42
+  -&gt; data/processed/{train,dev,test}.jsonl</pre>
+
+    <h2>Step details</h2>
+
+    <h3>1. Hindi re-extraction -- <code>reextract_pdfs.py</code></h3>
+    <p><strong>Why:</strong> All 30 Hindi PDFs use custom font encoding. Ligatures are stored as
+      positioned glyph components, so text-layer extractors return broken spacing, control chars,
+      or <code>(cid:N)</code> placeholders. Doc 17 even transliterates.</p>
+    <p><strong>How:</strong> Five backends were compared on Doc 6:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Tool</th><th>Type</th><th>Doc6 time</th><th>Dev chars</th><th>Issue</th></tr></thead>
+        <tbody>
+          <tr><td>pdftotext</td><td>text-layer</td><td class="num">0.028s</td><td class="num">4,657</td><td>ligature spacing broken</td></tr>
+          <tr><td>PyMuPDF</td><td>text-layer</td><td class="num">0.012s</td><td class="num">4,657</td><td>control chars</td></tr>
+          <tr><td>pdfminer.six</td><td>text-layer</td><td class="num">0.088s</td><td class="num">4,657</td><td>(cid:N)</td></tr>
+          <tr><td>pdfplumber</td><td>text-layer</td><td class="num">0.106s</td><td class="num">4,657</td><td>same as pdfminer</td></tr>
+          <tr><td><strong>Tesseract hin</strong></td><td>OCR</td><td class="num">~6s</td><td class="num">~6,027</td><td>OCR noise, but real Devanagari</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p><strong>Decision:</strong> default backend Tesseract <code>-l hin --psm 6</code> at 300 DPI.
+      Staging under <code>data/hindi/preprocessed/</code> so originals are never overwritten.</p>
+
+    <h3>2. English line join -- <code>join_lines.py</code></h3>
+    <p><strong>Why:</strong> PDF extraction hard-wraps English mid-sentence (~44-74 chars/line).</p>
+    <p><strong>How:</strong> Heuristic join when a line ends mid-phrase and the next starts lowercase
+      or with a known proper noun. Proper nouns were mined from the corpus (34 high-frequency
+      continuation heads: Court, Appellant, Section, ...).</p>
+    <p><strong>Result:</strong> roughly 58% fewer non-empty EN lines after join.</p>
+
+    <h3>3. Segmentation -- <code>segment_sentences.py</code></h3>
+    <p><strong>Why:</strong> Alignment needs sentence units while preserving legal abbreviations.</p>
+    <p><strong>How:</strong> spaCy <code>en_core_web_sm</code> for English; danda-aware split for Hindi.</p>
+    <p><strong>Result (order of magnitude):</strong> EN ~2,495 sentences, HI ~7,418 -- strongly
+      asymmetric, so 1:1 line alignment is impossible without embeddings.</p>
+
+    <h3>4. Alignment -- <code>align_sentences.py</code></h3>
+    <p><strong>Why:</strong> 29/30 docs have EN/HI sentence count mismatch; only document-level
+      parallelism is guaranteed.</p>
+    <p><strong>How:</strong> LaBSE sentence embeddings, mutual-best pairing, then QC:</p>
+    <ul>
+      <li>min similarity &gt;= 0.5</li>
+      <li>EN:HI character ratio in [0.3, 3.0]</li>
+      <li>min length &gt; 3 chars</li>
+      <li>EN Jaccard near-dedup 0.85 (drop weaker of near-duplicates)</li>
+    </ul>
+    <p><strong>Result:</strong> <strong>1,458</strong> pairs written to <code>data/aligned/all.jsonl</code>.
+      Under the same QC, LaBSE beat BGE-M3 (1,458 vs 1,347).</p>
+
+    <h3>5. Split -- <code>output_format.py</code></h3>
+    <p><strong>Why:</strong> Sentence-level random splits leak the same judgment into train and test.</p>
+    <p><strong>How:</strong> Document-level assignment, seed 42, roughly 80/10/10 by docs then by pairs:</p>
+    <pre class="codeblock">train docs: 2,3,5,6,7,10-20,22,23,25-30  -&gt; 1,136 pairs
+dev docs:   8, 9, 24                     -&gt; 132 pairs
+test docs:  1, 4, 21                     -&gt; 190 pairs</pre>
+    <p>IDs live in <code>src/config.py</code> as frozen constants. Do not re-roll.</p>
+
+    <h2>Steps deliberately skipped</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Step</th><th>Why skipped</th></tr></thead>
+        <tbody>
+          <tr><td>BOM strip / CRLF normalize</td><td>No residual effect on the live OCR path</td></tr>
+          <tr><td>OCR roman <code>li.</code> fix</td><td>Regex false positives on S.L.P. and judge initials</td></tr>
+          <tr><td>Separate paragraph pass</td><td>Segmentation already enough for align</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Reproduce</h2>
+    <pre class="codeblock">make preprocess
+# or: python run_pipeline.py --steps preprocess</pre>
+  </div>
+  <script src="../js/site.js"></script>
+</body>
+</html>

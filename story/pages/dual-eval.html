@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dual evaluation</title>
+  <link rel="stylesheet" href="../css/story.css" />
+</head>
+<body data-page="dual-eval">
+  <div id="page-source" data-title="Dual evaluation policies" data-kicker="Method">
+    <p>
+      Dual evaluation is the methodological backbone of the MT results. If you only watch assignment
+      test BLEU, Stage B looks like a win. External legal holdouts show that Stage B forgot broader
+      legal Hindi. That single design decision prevented shipping an overfit adapter.
+    </p>
+
+    <h2>Policy I -- internal (assignment)</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Split</th><th>Path</th><th>Pairs</th><th>Docs</th></tr></thead>
+        <tbody>
+          <tr><td>test</td><td><code>data/processed/test.jsonl</code></td><td class="num">190</td><td>1, 4, 21</td></tr>
+          <tr><td>dev</td><td><code>data/processed/dev.jsonl</code></td><td class="num">132</td><td>8, 9, 24</td></tr>
+          <tr><td>train</td><td><code>data/processed/train.jsonl</code></td><td class="num">1,136</td><td>remaining</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p><strong>Purpose:</strong> in-domain Supreme Court judgment style. Hard, small, frozen.</p>
+
+    <h2>Policy E -- external legal holdout</h2>
+    <p>
+      Carved from Stage A pool <em>before</em> any Stage A fine-tune. Never used as MT train.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Suite</th><th>Pairs</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>E_milpac_test</td><td class="num">117</td><td>10% MILPaC holdout (quality legal)</td></tr>
+          <tr><td>E_anuvaad_test</td><td class="num">3,000</td><td>Fixed-size Anuvaad holdout (scale / noise)</td></tr>
+          <tr><td>E_milpac_dev / E_anuvaad_dev</td><td class="num">117 / 1,000</td><td>Selection-time monitors</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p><strong>Purpose:</strong> broader legal domain; anti-overfit signal when specializing to assignment.</p>
+
+    <h2>What every system must report</h2>
+    <pre class="codeblock">I_test BLEU / chrF++
+E_milpac_test BLEU / chrF++
+E_anuvaad_test BLEU / chrF++</pre>
+    <p>Decode protocol for final claims: beam 4, max_new 256, max_in 256, H200 batch 32 bf16
+      (or equivalent). Metrics: sacreBLEU BLEU + chrF++ (<code>word_order=2</code>).</p>
+
+    <h2>Selection and anti-forget</h2>
+    <p>
+      During training, checkpoints are ranked with a weighted primary score on dev suites
+      (chrF++). Stage B additionally has a hard anti-forget bar versus A2:
+    </p>
+    <div class="callout fail">
+      <div class="label">Stage B anti-forget bar</div>
+      <p>
+        E_milpac chrF++ drop must be &lt;= 2.0 vs A2. Pure Stage B dropped ~5.24 -- fail.
+        B' with 10% A2 replay recovered most of E but still did not beat A2 dual-policy.
+      </p>
+    </div>
+
+    <h2>Code</h2>
+    <ul>
+      <li><code>src/preprocessing/split_external_eval.py</code> -- carve holdouts</li>
+      <li><code>src/evaluation/eval_sets.py</code> -- suite paths + leak validation</li>
+      <li><code>src/evaluation/metrics_mt.py</code> -- BLEU / chrF++</li>
+      <li><code>src/evaluation/zero_shot_nllb.py</code> -- decode base or adapters, write hyps + report</li>
+    </ul>
+  </div>
+  <script src="../js/site.js"></script>
+</body>
+</html>

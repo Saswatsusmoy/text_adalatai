@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Reflection</title>
+  <link rel="stylesheet" href="../css/story.css" />
+</head>
+<body data-page="reflection">
+  <div id="page-source" data-title="Reflection" data-kicker="Close">
+    <p>
+      Assignment task 5: what worked, what did not, how to improve, and how this scales beyond
+      one language pair or one court corpus.
+    </p>
+
+    <h2>What worked</h2>
+    <ul>
+      <li><strong>Document-level splits</strong> -- no judgment leakage into test.</li>
+      <li><strong>OCR over PDF text layer</strong> for Hindi -- ligature damage is worse than OCR noise.</li>
+      <li><strong>Dual-policy I + E</strong> -- Stage B would have shipped incorrectly without E.</li>
+      <li><strong>LoRA on NLLB decoder attention</strong> -- cheap (~0.5% params), real dual-policy gains.</li>
+      <li><strong>Curriculum A1 -&gt; A2</strong> -- small curated Stage A first, then scale resume.</li>
+      <li><strong>Domain SentencePiece science</strong> -- clear packing evidence vs byte-level BPE.</li>
+      <li><strong>Documenting failures</strong> (bulk C1c, pure Stage B) as first-class results.</li>
+    </ul>
+
+    <h2>What did not</h2>
+    <ul>
+      <li>Custom vocab + short LoRA budget did not beat NLLB priors (C1c v2 still below ZS).</li>
+      <li>Assignment-only Stage B overfits I and forgets external legal.</li>
+      <li>COMET / legal error panel not automated (optional; still a gap).</li>
+      <li>OCR HI references can be truncated -- metrics mix model and ref error.</li>
+    </ul>
+
+    <h2>How I would improve next</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Direction</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>Longer emb warm-up or C1c -&gt; A2 resume</td><td>Fair shot for vocab-extend quality</td></tr>
+          <tr><td>Stronger B' E replay / multi-task</td><td>Specialize without forget</td></tr>
+          <tr><td>COMET + glossary / party panel</td><td>Better legal adequacy than BLEU alone</td></tr>
+          <tr><td>Constrained decode for parties / sections</td><td>Entity and number fidelity</td></tr>
+          <tr><td>Human legal review on 50-100 sentences</td><td>Ground automatic gains</td></tr>
+          <tr><td>Full-document hierarchical translate</td><td>Consistency across long judgments</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Scaling to more languages / harder legal text</h2>
+    <ol>
+      <li>Reuse the dual-policy contract: internal gold docs + external legal holdouts.</li>
+      <li>Prefer NLLB / IndicNMT-class priors + LoRA over from-scratch small models when bitext is limited.</li>
+      <li>Domain SPM for cost if you control the full stack; do not assume vocab surgery is free.</li>
+      <li>For new Indic pairs: Stage A legal bitext (or government/court digests) -&gt; curriculum subsample -&gt; dual eval -&gt; light Stage B with replay.</li>
+      <li>For harder texts (statutes, multi-judge benches): add glossary constraints and document-level consistency passes.</li>
+    </ol>
+
+    <h2>Feasibility vs prototype scope</h2>
+    <p>
+      The assignment asks for Colab-class depth. Smoke training and full preprocessing run on a
+      laptop. The dual-track scoreboard used optional H200 time. That is extra rigor, not a
+      requirement -- the production story remains "LoRA on NLLB with dual-policy selection."
+    </p>
+  </div>
+  <script src="../js/site.js"></script>
+</body>
+</html>
