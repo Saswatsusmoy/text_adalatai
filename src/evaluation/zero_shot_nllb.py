@@ -8,6 +8,13 @@ import torch
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
 from src.evaluation.eval_sets import load_jsonl, scoring_suites
+from src.evaluation.mbr_decode import (
+    DEFAULT_SAMPLES as MBR_DEFAULT_SAMPLES,
+    DEFAULT_TEMPERATURE as MBR_DEFAULT_TEMPERATURE,
+    DEFAULT_TOP_P as MBR_DEFAULT_TOP_P,
+    DEFAULT_UTILITY as MBR_DEFAULT_UTILITY,
+    translate_batch_mbr,
+)
 from src.evaluation.metrics_mt import score_pairs
 from src.training.common import empty_device_cache, is_cuda
 
@@ -143,6 +150,7 @@ def translate_pairs(
     resume: bool = True,
     verbose: bool = True,
     tag: str = 'zero_shot_nllb',
+    mbr: dict | None = None,
 ) -> list[dict]:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     path = hyp_path_for(suite_name, tag=tag)
@@ -159,20 +167,37 @@ def translate_pairs(
     if not pending:
         return results
 
+    forced_bos = _forced_bos_id(tokenizer) if mbr else None
+
     t0 = time.time()
     with open(path, 'a' if results else 'w', encoding='utf-8') as f:
         n_pending = len(pending)
         for start in range(0, n_pending, batch_size):
             chunk = pending[start : start + batch_size]
-            hyps = translate_batch(
-                [p['en_text'] for p in chunk],
-                tokenizer,
-                model,
-                device,
-                max_input_length=max_input_length,
-                max_new_tokens=max_new_tokens,
-                num_beams=num_beams,
-            )
+            if mbr:
+                hyps = translate_batch_mbr(
+                    [p['en_text'] for p in chunk],
+                    tokenizer,
+                    model,
+                    device,
+                    forced_bos_token_id=forced_bos,
+                    max_input_length=max_input_length,
+                    max_new_tokens=max_new_tokens,
+                    n_samples=mbr['samples'],
+                    temperature=mbr['temperature'],
+                    top_p=mbr['top_p'],
+                    utility=mbr['utility'],
+                )
+            else:
+                hyps = translate_batch(
+                    [p['en_text'] for p in chunk],
+                    tokenizer,
+                    model,
+                    device,
+                    max_input_length=max_input_length,
+                    max_new_tokens=max_new_tokens,
+                    num_beams=num_beams,
+                )
             for p, hyp in zip(chunk, hyps):
                 row = {
                     'en_text': p['en_text'],
@@ -236,6 +261,7 @@ def evaluate_suite(
     resume: bool = True,
     verbose: bool = True,
     tag: str = 'zero_shot_nllb',
+    mbr: dict | None = None,
 ) -> dict:
     pairs = load_jsonl(path)
     if max_pairs is not None:
@@ -263,6 +289,7 @@ def evaluate_suite(
         resume=resume,
         verbose=verbose,
         tag=tag,
+        mbr=mbr,
     )
     key_to_hyp = {(r['en_text'], r['hi_text']): r['hyp_hi'] for r in rows}
     hyps, refs, missing = [], [], 0
@@ -321,6 +348,7 @@ def run(
     verbose: bool = True,
     adapters: str | None = None,
     tag: str | None = None,
+    mbr: dict | None = None,
 ) -> dict:
     suites = suites or list(DEFAULT_SUITES)
     available = scoring_suites()
@@ -329,6 +357,8 @@ def run(
         raise ValueError(f'unknown suites {unknown}; choose from {list(available)}')
     if tag is None:
         tag = 'nllb_lora' if adapters else 'zero_shot_nllb'
+        if mbr:
+            tag = f'{tag}_mbr{mbr["samples"]}'
 
     if score_only:
         report = {
@@ -347,6 +377,11 @@ def run(
         if adapters:
             print(f'Adapters: {adapters}')
         print(f'Tag: {tag}\nDevice: {device}\nSuites: {suites}')
+        if mbr:
+            print(
+                f'MBR: samples={mbr["samples"]} top_p={mbr["top_p"]} '
+                f'temperature={mbr["temperature"]} utility={mbr["utility"]}'
+            )
         if max_pairs:
             print(f'max_pairs per suite: {max_pairs}')
 
@@ -372,6 +407,7 @@ def run(
                 resume=resume,
                 verbose=verbose,
                 tag=tag,
+                mbr=mbr,
             )
         )
         empty_device_cache(device)
@@ -388,6 +424,7 @@ def run(
         'num_beams': num_beams,
         'batch_size': batch_size,
         'max_pairs': max_pairs,
+        'mbr': mbr,
         'elapsed_s': round(time.time() - t0, 1),
         'suites': results,
     }
@@ -411,7 +448,28 @@ def main():
     p.add_argument('--tag', default=None)
     p.add_argument('--score-only', action='store_true')
     p.add_argument('--no-resume', action='store_true')
+    p.add_argument(
+        '--mbr',
+        action='store_true',
+        help='Minimum Bayes Risk decode: sample N, pick argmax pairwise chrF utility',
+    )
+    p.add_argument('--mbr-samples', type=int, default=MBR_DEFAULT_SAMPLES)
+    p.add_argument('--mbr-temperature', type=float, default=MBR_DEFAULT_TEMPERATURE)
+    p.add_argument('--mbr-top-p', type=float, default=MBR_DEFAULT_TOP_P)
+    p.add_argument(
+        '--mbr-utility',
+        choices=sorted({'chrf', 'chrfpp'}),
+        default=MBR_DEFAULT_UTILITY,
+    )
     a = p.parse_args()
+    mbr_cfg = None
+    if a.mbr:
+        mbr_cfg = {
+            'samples': a.mbr_samples,
+            'temperature': a.mbr_temperature,
+            'top_p': a.mbr_top_p,
+            'utility': a.mbr_utility,
+        }
     run(
         model_id=a.model,
         suites=[s.strip() for s in a.suites.split(',') if s.strip()],
@@ -425,6 +483,7 @@ def main():
         resume=not a.no_resume,
         adapters=a.adapters,
         tag=a.tag,
+        mbr=mbr_cfg,
     )
 
 

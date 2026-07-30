@@ -5,6 +5,7 @@
 	tokenizer-spm-v2-corpus tokenizer-spm-v2-train tokenizer-spm-v2-bench tokenizer-c0 \
 	tokenizer-spm-v2-full-joint profile-hardware \
 	zero-shot-nllb zero-shot-nllb-smoke \
+	eval-mbr-smoke eval-mbr-a2 eval-mbr-zs \
 	stage-a-subsample-smoke stage-a-subsample-A1 stage-b-replay-mix \
 	train-nllb-smoke train-nllb-A1 train-nllb-A1-h200 train-nllb-Bp-h200 \
 	train-nllb-A2-dora-h200 \
@@ -123,6 +124,34 @@ zero-shot-nllb:
 
 zero-shot-nllb-smoke:
 	PYTHONPATH=. python3 -m src.evaluation.zero_shot_nllb --max-pairs 5 --suites I_test,E_milpac_test
+
+# --- MBR decode (sample N + argmax pairwise chrF++) ---
+
+# Wiring smoke: 2 pairs, 4 samples, MPS/local. No adapters required.
+MBR_SAMPLES ?= 8
+MBR_TEMPERATURE ?= 1.0
+MBR_TOP_P ?= 0.9
+MBR_UTILITY ?= chrfpp
+A2_ADAPTERS ?= data/runs/nllb600_A_A2_h200_A2_ddp2_20260726T212958Z/checkpoints/best_primary
+
+eval-mbr-smoke:
+	PYTHONPATH=. python3 -m src.evaluation.zero_shot_nllb \
+		--max-pairs 2 --suites I_dev --max-new-tokens 64 \
+		--mbr --mbr-samples 4 --mbr-utility $(MBR_UTILITY) \
+		--tag zs_mbr_smoke
+
+eval-mbr-zs:
+	PYTHONPATH=. python3 -m src.evaluation.zero_shot_nllb \
+		--mbr --mbr-samples $(MBR_SAMPLES) \
+		--mbr-temperature $(MBR_TEMPERATURE) --mbr-top-p $(MBR_TOP_P) \
+		--mbr-utility $(MBR_UTILITY)
+
+eval-mbr-a2:
+	PYTHONPATH=. python3 -m src.evaluation.zero_shot_nllb \
+		--adapters $(A2_ADAPTERS) \
+		--mbr --mbr-samples $(MBR_SAMPLES) \
+		--mbr-temperature $(MBR_TEMPERATURE) --mbr-top-p $(MBR_TOP_P) \
+		--mbr-utility $(MBR_UTILITY)
 
 # --- Phase 3: training (Track D default; Track C via train-c1* / c1c*) ---
 

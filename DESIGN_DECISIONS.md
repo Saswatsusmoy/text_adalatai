@@ -972,3 +972,32 @@ v2 run: `nllb600_A_A1_c1c_v2_h200_ddp2_20260726T234856Z` (retrain after emb-save
 - Orchestrator and `reproduce_all.sh` cover data + tokenizer + dual-policy validation; full train remains Makefile.
 
 **Rationale:** Separation without a rewrite. Every experiment remains findable by the same module name; only wiring and docs clarify the boundaries.
+
+---
+
+## 31. MBR decoding (inference-only ablation on top of A2)
+
+**Date:** 2026-07-31
+
+**Context:** After A2 LoRA (production) and B'/DoRA (ablations), the remaining defensible lever without any additional training is decoder-side: replace beam search with **Minimum Bayes Risk (MBR)** decoding. Standard NMT technique (Eikema & Aziz 2020; Freitag et al. 2022 chrF utility); no new dependencies (sacrebleu already present).
+
+**Decision:**
+
+| Item | Choice |
+|------|--------|
+| Module | `src/evaluation/mbr_decode.py` (pure functions: `mbr_pick`, `sample_candidates`, `translate_batch_mbr`) |
+| Utility | Sentence-level **chrF++** (word_order=2) pairwise; `chrf` (word_order=0) also selectable |
+| Sampling | Nucleus: `top_p=0.9`, `temperature=1.0`, `num_beams=1`, `num_return_sequences=N` in one `generate` call |
+| Default N | **8** samples per source |
+| CLI | `--mbr --mbr-samples N --mbr-temperature T --mbr-top-p P --mbr-utility {chrf,chrfpp}` on `src.evaluation.zero_shot_nllb` |
+| Tag naming | Auto-append `_mbr{N}` when `--tag` omitted (separate hyp files, no clobber of beam4 runs) |
+| Make | `eval-mbr-a2`, `eval-mbr-zs`, `eval-mbr-smoke` |
+| Tests | `tests/evaluation/test_mbr_decode.py` -- pure-function tests only (no NLLB load) |
+
+**Compare:** A2 + MBR vs A2 + beam4 on the three test suites. Promote MBR into decode protocol if dual-policy chrF++ improves without a regression outside noise.
+
+**Rationale:** Beam search maximises model probability under a wrong objective (per-token likelihood). MBR maximises expected utility under the model's own distribution. The technique is well-understood, easy to defend at interview (Eikema & Aziz 2020 is the canonical paper), and completely reversible -- toggle a CLI flag. No training, no reward model, no gradient step.
+
+**Cost model:** N samples ≈ N× decode compute per input (sampling with `num_return_sequences=N` is a single kernel launch but produces N times more tokens). MBR utility computation is O(N²) sentence-level chrF per input, negligible vs generation. On H200 bf16 batch=32, expected ≈ 8× the ~3-4 min per suite of the beam4 run.
+
+**Status:** Implemented, unit-tested, wiring-smoked on MPS with A2 adapters (2 pairs, 4 samples, correct hyp/report layout). Full I+E test-set MBR run **not yet executed** on H200; run to produce `A2_mbr{N}_best_report.json` and add row to REPORT §4 scoreboard.
