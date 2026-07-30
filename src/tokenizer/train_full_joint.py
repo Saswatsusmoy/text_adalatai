@@ -1,15 +1,18 @@
 """
 Train joint legal SPM trying full (or fuller) coverage within ~16GB RAM.
 
-Strategy (Unigram only — no byte-level BPE):
+Strategy:
   1. Ensure base joint corpus exists
   2. Exact-line dedupe (+ optional truncate) to shrink SA peak
   3. Try profiles in order: full -> full_tight -> full_sample_15
-  4. Write new model prefix (does not overwrite sample joint_41000)
+  4. Write new model prefix. Unigram output keeps the existing name
+     `sentencepiece_legal_v2_joint_full_{vocab}`. BPE output gets a
+     `_bpe` infix so the two live side by side for the ablation.
 
 Usage:
   PYTHONPATH=. python3 src/tokenizer/train_full_joint.py
   PYTHONPATH=. python3 src/tokenizer/train_full_joint.py --vocab-size 41000
+  PYTHONPATH=. python3 src/tokenizer/train_full_joint.py --model-type bpe
 """
 
 import json
@@ -26,11 +29,22 @@ BASE_JOINT = CORPUS_DIR / 'spm_corpus_legal_v2_joint.txt'
 DEFAULT_VOCAB = 41000
 
 # Profiles to try for "as full as possible" on 16GB (Unigram)
-FULL_ATTEMPTS = [
+_UNIGRAM_ATTEMPTS = [
     ('full', 'sentencepiece_legal_v2_joint_full_{vocab}'),
     ('full_tight', 'sentencepiece_legal_v2_joint_fulltight_{vocab}'),
     ('full_sample_15', 'sentencepiece_legal_v2_joint_fullsamp15_{vocab}'),
 ]
+_BPE_ATTEMPTS = [
+    ('full', 'sentencepiece_legal_v2_joint_full_bpe_{vocab}'),
+    ('full_tight', 'sentencepiece_legal_v2_joint_fulltight_bpe_{vocab}'),
+    ('full_sample_15', 'sentencepiece_legal_v2_joint_fullsamp15_bpe_{vocab}'),
+]
+
+
+def attempts_for(model_type: str) -> list[tuple[str, str]]:
+    if model_type == 'bpe':
+        return _BPE_ATTEMPTS
+    return _UNIGRAM_ATTEMPTS
 
 
 def ensure_base_joint(verbose: bool = True) -> Path:
@@ -64,6 +78,7 @@ def _train_subprocess(
     vocab_size: int,
     model_prefix: str,
     profile: str,
+    model_type: str,
 ) -> int:
     """Run train in a child process so OOM kill does not kill the parent."""
     code = f"""
@@ -73,7 +88,7 @@ train(
     {vocab_size},
     model_prefix={model_prefix!r},
     profile={profile!r},
-    model_type='unigram',
+    model_type={model_type!r},
 )
 """
     env = {**dict(**__import__('os').environ), 'PYTHONPATH': '.'}
@@ -90,17 +105,21 @@ def run(
     max_chars: int | None = 4096,
     force: bool = False,
     verbose: bool = True,
+    model_type: str = 'unigram',
 ) -> dict:
+    if model_type not in ('unigram', 'bpe'):
+        raise ValueError(f'model_type must be unigram or bpe (got {model_type!r})')
     corpus, dstats = build_deduped(max_chars=max_chars, verbose=verbose)
     report: dict = {
         'corpus': str(corpus),
         'dedupe': dstats,
         'vocab_size': vocab_size,
+        'model_type': model_type,
         'attempts': [],
         'winner': None,
     }
 
-    for profile, prefix_tmpl in FULL_ATTEMPTS:
+    for profile, prefix_tmpl in attempts_for(model_type):
         prefix = prefix_tmpl.format(vocab=vocab_size)
         out = MODEL_DIR / f'{prefix}.model'
         if out.exists() and out.stat().st_size > 0 and not force:
@@ -121,7 +140,7 @@ def run(
             print(f'\n=== Attempt profile={profile} prefix={prefix} ===')
             print(f'    corpus={corpus} opts={TRAIN_PROFILES[profile]}')
 
-        rc = _train_subprocess(corpus, vocab_size, prefix, profile)
+        rc = _train_subprocess(corpus, vocab_size, prefix, profile, model_type)
         attempt = {
             'profile': profile,
             'prefix': prefix,
@@ -164,7 +183,7 @@ def run(
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description='Full-as-possible joint Unigram SPM on 16GB')
+    parser = argparse.ArgumentParser(description='Full-as-possible joint SPM (unigram or bpe) on 16GB')
     parser.add_argument('--vocab-size', type=int, default=DEFAULT_VOCAB)
     parser.add_argument(
         '--max-chars',
@@ -173,9 +192,20 @@ def main():
         help='Truncate lines to this many chars when deduping (0 = no truncate)',
     )
     parser.add_argument('--force', action='store_true', help='Retrain even if model exists')
+    parser.add_argument(
+        '--model-type',
+        choices=['unigram', 'bpe'],
+        default='unigram',
+        help='SentencePiece model type (unigram default; bpe for the ablation)',
+    )
     args = parser.parse_args()
     max_chars = None if args.max_chars == 0 else args.max_chars
-    run(vocab_size=args.vocab_size, max_chars=max_chars, force=args.force)
+    run(
+        vocab_size=args.vocab_size,
+        max_chars=max_chars,
+        force=args.force,
+        model_type=args.model_type,
+    )
 
 
 if __name__ == '__main__':

@@ -1033,3 +1033,40 @@ Reports: `data/analysis/nllb600_A2_mps_mbr8_best_report.json`, `data/analysis/nl
 3. COMET utility instead of chrF — reference-free QE-guided MBR is where recent papers report the actual gains.
 
 None of these were run in this pass — negative result stands at the tried configuration.
+
+---
+
+## 32. BPE vs Unigram at v2 41K (packing ablation)
+
+**Date:** 2026-07-31
+
+**Context:** §15 flagged SentencePiece BPE as Unicode-aware (distinct from byte-level BPE). §17-§18 shipped Unigram 41K joint. But no BPE 41K on the v2 joint corpus had been trained -- a gap. The v1 note about "BPE at 16K looked promising on raw packing" was never scaled.
+
+**What was run:** train SentencePiece BPE 41K on the exact same deduped v2 joint corpus (`spm_corpus_legal_v2_joint_dedup_c4096.txt`), profile `full`, `character_coverage=1.0`, same pad/unk/bos/eos IDs. Only `model_type` changes. Bench on the same 322 held-out (assignment dev+test) pairs.
+
+**Result** (held-out, 322 pairs):
+
+| Model | Vocab | HI c/t | HI/EN | Total tok | Dev pieces |
+|-------|------:|-------:|------:|----------:|-----------:|
+| v2 joint 41K Unigram (shipped) | 41000 | 4.37 | 0.720 | 10,978 | 16,217 |
+| **v2 joint 41K BPE** | 41000 | **4.40** | 0.721 | **10,898** | 16,371 |
+| v2 joint 48K Unigram | 48000 | 4.38 | 0.721 | 10,937 | 18,524 |
+| v2 joint 64K Unigram | 64000 | 4.42 | 0.722 | 10,819 | 23,742 |
+
+Delta: BPE 41K vs Unigram 41K = +0.03 HI c/t (+0.7%), -80 total tokens (-0.7%), +154 Devanagari pieces. BPE 41K packing sits between Unigram 48K and 64K at the 41K parameter budget.
+
+**Decision:**
+
+Do not switch the freeze. `SPM_V2_PRIMARY` stays at Unigram 41K:
+
+1. Delta is small (0.7% packing). Not worth churning the shipped constant, existing configs, and any downstream that assumes the model file.
+2. Track D shipped uses NLLB native tokens, not v2 SPM. The v2 SPM is Track C material and Track C1c already showed vocab surgery on pretrained NLLB is not free.
+3. BPE vs Unigram is not a shipping decision without a translation-quality run, which was not performed.
+
+**Kept as an ablation artifact:** `data/models/tokenizers/sentencepiece_legal_v2_joint_full_bpe_41000.model`. Available for a future C1a from-scratch build or a fresh C1c-style NLLB extension.
+
+**Followups not run:**
+
+1. MT train on BPE 41K (C1a from-scratch or C1c extend) -- required to answer "is BPE better for legal MT" beyond packing.
+2. BPE at 48K / 64K to see if it dominates Unigram at those sizes too.
+3. Subword-regularization comparison (Unigram has native sampling; BPE-dropout is separate).

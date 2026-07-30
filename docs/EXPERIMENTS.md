@@ -227,6 +227,25 @@ Full joint on 16GB: exact dedupe (~2% dups) + max line 4096 + `seed_sentencepiec
 
 Gains 41k->64k are real but small (~1.4% tokens). Larger V can allocate more pieces to frequent legal collocations and leaves a longer tail of rare IDs for MT embeddings.
 
+#### BPE vs Unigram ablation at 41k (same v2 joint corpus, same profile)
+
+Follow-up to close a gap called out in DESIGN §15: v1 was Unigram only, and no BPE 41k on the v2 joint corpus had been trained. Same dedup+truncate corpus, same profile `full`, same `character_coverage=1.0`, same special-token IDs -- only `model_type` differs.
+
+| Model | Vocab | HI c/t | HI/EN | Total tok (held-out) | Dev pieces |
+|-------|------:|-------:|------:|---------------------:|-----------:|
+| v2 joint_full 41k (Unigram, shipped) | 41000 | 4.37 | 0.720 | 10,978 | 16,217 |
+| **v2 joint_full 41k BPE (new)** | 41000 | **4.40** | 0.721 | **10,898** | 16,371 |
+| v2 joint_full 48k Unigram | 48000 | 4.38 | 0.721 | 10,937 | 18,524 |
+| v2 joint_full 64k Unigram | 64000 | **4.42** | 0.722 | 10,819 | 23,742 |
+
+**Finding:** BPE 41k marginally beats Unigram 41k on packing: +0.03 HI c/t (+0.7%) and -80 total tokens (-0.7%) on 322 held-out pairs. BPE 41k lands between Unigram 48k and 64k on packing at the 41k parameter budget, with slightly more Devanagari pieces in the vocab.
+
+**Nuance:** SentencePiece BPE is Unicode-aware (`character_coverage=1.0`, no byte fallback) -- it is **not** the byte-level BPE that §4.1 flagged as Devanagari-blind. This BPE variant is a valid vocab strategy for legal HI.
+
+**Caveat -- packing only:** no MT training run was done with the BPE model. Track D shipped keeps NLLB native tokens (Track C1c already showed vocab surgery on a pretrained NLLB is not free even when packing improves). A from-scratch legal MT (C1a-style) or a full C1c-style extension of NLLB with this BPE 41k are the natural next steps -- not run.
+
+Model: `data/models/tokenizers/sentencepiece_legal_v2_joint_full_bpe_41000.model` (1.08 MB vs Unigram 1.12 MB). Trainer: `src/tokenizer/train_full_joint.py --model-type bpe`.
+
 #### Production freeze (Track C)
 
 ```text

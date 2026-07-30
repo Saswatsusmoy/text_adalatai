@@ -109,6 +109,32 @@
     <pre class="codeblock">data/models/tokenizers/sentencepiece_legal_v2_joint_full_41000.model
 # src.config.SPM_V2_PRIMARY</pre>
 
+    <h3>BPE vs Unigram at 41k (packing-only ablation, DESIGN &sect;32)</h3>
+    <p>
+      SentencePiece BPE 41K trained on the exact same deduped v2 joint corpus, same profile,
+      same char coverage. Only <code>model_type</code> differs. Note: this is Unicode-aware
+      SentencePiece BPE, <strong>not</strong> the byte-level BPE flagged as Devanagari-blind above.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Model</th><th>Vocab</th><th>HI c/t</th><th>Total tok</th><th>Dev pieces</th></tr></thead>
+        <tbody>
+          <tr><td><strong>v2 joint 41K Unigram (shipped)</strong></td><td class="num">41000</td><td class="num">4.37</td><td class="num">10,978</td><td class="num">16,217</td></tr>
+          <tr><td>v2 joint 41K BPE</td><td class="num">41000</td><td class="num"><strong>4.40</strong></td><td class="num"><strong>10,898</strong></td><td class="num">16,371</td></tr>
+          <tr><td>v2 joint 48K Unigram</td><td class="num">48000</td><td class="num">4.38</td><td class="num">10,937</td><td class="num">18,524</td></tr>
+          <tr><td>v2 joint 64K Unigram</td><td class="num">64000</td><td class="num">4.42</td><td class="num">10,819</td><td class="num">23,742</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      BPE 41K beats Unigram 41K on packing by 0.7% (+0.03 HI c/t, &minus;80 total tokens on
+      322 held-out pairs). BPE lands between Unigram 48K and 64K at the 41K parameter budget.
+      Difference is small and <strong>no MT-quality run was performed on BPE</strong> &mdash;
+      packing is not translation quality. Shipped freeze stays Unigram 41K.
+      BPE model kept as ablation artifact:
+      <code>sentencepiece_legal_v2_joint_full_bpe_41000.model</code>.
+    </p>
+
     <h2>Integration strategy</h2>
     <div class="table-wrap">
       <table>

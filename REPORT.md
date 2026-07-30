@@ -68,6 +68,8 @@ Vocab ablation (same joint corpus): 64k packs ~1.4% better than 41k. Freeze is *
 data/models/tokenizers/sentencepiece_legal_v2_joint_full_41000.model
 ```
 
+**BPE vs Unigram at 41k (packing-only ablation, DESIGN §32):** trained SentencePiece BPE 41K on the exact same deduped v2 joint corpus, same profile, same char coverage. Held-out (322 pairs): BPE HI c/t 4.40 vs Unigram 4.37 (+0.7%), total tokens 10,898 vs 10,978 (-0.7%). BPE 41K sits between Unigram 48K and 64K on packing at the 41K parameter budget. Difference is small; no MT-quality run was performed on BPE, so the shipped SPM freeze stays Unigram 41K. BPE model kept as ablation artifact (`sentencepiece_legal_v2_joint_full_bpe_41000.model`).
+
 ### 1.3 Integration strategy (two tracks)
 
 | Track | Idea | Outcome |

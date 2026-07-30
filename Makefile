@@ -3,7 +3,7 @@
 	tokenizer-prepare tokenizer-train-16k tokenizer-train-32k tokenizer-train-41k \
 	tokenizer-train-all tokenizer-train tokenizer-bench \
 	tokenizer-spm-v2-corpus tokenizer-spm-v2-train tokenizer-spm-v2-bench tokenizer-c0 \
-	tokenizer-spm-v2-full-joint profile-hardware \
+	tokenizer-spm-v2-full-joint tokenizer-spm-v2-full-joint-bpe profile-hardware \
 	zero-shot-nllb zero-shot-nllb-smoke \
 	eval-mbr-smoke eval-mbr-a2 eval-mbr-zs \
 	comet-score \
@@ -111,6 +111,11 @@ tokenizer-c0: tokenizer-spm-v2-train tokenizer-spm-v2-bench
 # Full-as-possible joint Unigram (dedupe + memory profiles; keeps sample joint_41k)
 tokenizer-spm-v2-full-joint:
 	PYTHONPATH=. python3 src/tokenizer/train_full_joint.py --vocab-size 41000 --max-chars 4096
+	PYTHONPATH=. python3 src/tokenizer/benchmark.py --eval held_out
+
+# BPE ablation (DESIGN §32): same v2 joint corpus, model_type=bpe, 41k
+tokenizer-spm-v2-full-joint-bpe:
+	PYTHONPATH=. python3 src/tokenizer/train_full_joint.py --vocab-size 41000 --max-chars 4096 --model-type bpe
 	PYTHONPATH=. python3 src/tokenizer/benchmark.py --eval held_out
 
 # --- Hardware ---

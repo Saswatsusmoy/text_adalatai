@@ -121,6 +121,18 @@
       "time_s": 0.0,
       "en_subword_regularity": 3.24,
       "hi_subword_regularity": 2.93
+    },
+    {
+      "name": "v2 SP joint_full_bpe_41000",
+      "vocab": 41000,
+      "dev_tokens": 16371,
+      "en_chars_per_tok": 5.03,
+      "hi_chars_per_tok": 4.4,
+      "hi_en_ratio": 0.721,
+      "total_tokens": 10898,
+      "time_s": 0.0,
+      "en_subword_regularity": 3.22,
+      "hi_subword_regularity": 2.88
     }
   ]
 }

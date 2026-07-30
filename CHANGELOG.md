@@ -4,6 +4,12 @@
 
 ### Added
 
+- **BPE vs Unigram at v2 41K -- packing ablation** (DESIGN §32, EXPERIMENTS §4.3):
+  - `src/tokenizer/train_full_joint.py --model-type {unigram,bpe}` -- trainer now supports BPE with a distinct output prefix (`_bpe` infix) so the two live side by side.
+  - Model: `data/models/tokenizers/sentencepiece_legal_v2_joint_full_bpe_41000.model` (same deduped v2 joint corpus, same profile `full`, same char coverage, same special-token IDs; only `model_type` differs).
+  - Held-out (322 pairs): BPE 41K = HI c/t 4.40 / total 10,898 vs Unigram 41K shipped 4.37 / 10,978. Delta +0.7% packing at the same parameter budget. BPE lands between Unigram 48K and 64K on packing.
+  - **Decision:** `SPM_V2_PRIMARY` stays Unigram 41K. Delta too small to churn the freeze, and no MT-quality run was done on BPE (packing != translation quality). BPE model kept as ablation artifact for a future C1a / C1c-style run.
+
 - **Multi-page assignment docs walkthrough (`story/`):**
   - Docs-style light site with separate pages (assignment, pipeline, tokenizers, Stage A,
     dual eval, Track D/C, scoreboard, qualitative, production, failures, reflection,
