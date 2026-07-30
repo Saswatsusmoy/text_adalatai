@@ -1,0 +1,94 @@
+[project]
+name = "adalat-ai"
+version = "0.1.0"
+description = "Legal EN->HI translation for Indian court judgments"
+requires-python = ">=3.10"
+readme = "README.md"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+src = ["src", "tests", "run_pipeline.py"]
+extend-exclude = [
+  ".venv",
+  "data",
+  "logs",
+  "story",
+  "__pycache__",
+  ".local",
+]
+
+[tool.ruff.lint]
+select = [
+  "E",      # pycodestyle errors
+  "W",      # pycodestyle warnings
+  "F",      # pyflakes
+  "I",      # isort
+  "UP",     # pyupgrade (prefer 3.10+ syntax)
+  "B",      # bugbear
+  "SIM",    # simplify
+  "RUF",    # ruff-specific
+  "C4",     # comprehensions
+  "PIE",    # misc
+  "T10",    # debugger
+  "PERF",   # performance
+]
+ignore = [
+  "E501",    # formatter owns width; AGENTS allows up to 120 for prints/asserts
+  "B008",    # function calls in defaults (argparse / Path)
+  "B905",    # zip(strict=) noise on long MT pipelines
+  "SIM102",  # nested if sometimes clearer for early-exit gates
+  "SIM103",  # needless-bool false positives on guard returns
+  "SIM105",  # suppress() less clear for optional backend attrs
+  "SIM108",  # ternary not always clearer
+  "SIM113",  # enumerate not always better
+  "SIM115",  # short open() for line counts / manifests
+  "PERF102", # .items() vs keys() preference
+  "PERF203", # try/except in loops sometimes intentional
+  "PERF401", # list append loops fine for readability
+  "RUF001",  # Hindi / Devanagari is intentional
+  "RUF002",
+  "RUF003",
+  "RUF005",  # list concat sometimes clearer than [*a, *b]
+  "RUF012",  # mutable class defaults in HF-style configs
+  "RUF034",  # if/else for verbose branches
+  "RUF046",  # int() on yaml values is intentional
+  "RUF059",  # unused unpack often documents shape
+  "PIE810",  # multiple startswith ok for path checks
+  "C401",    # set() vs setcomp preference
+  "C408",    # dict() vs {} preference
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+  "S101",   # assert ok in tests
+  "B018",   # useless expression sometimes used as smoke
+]
+"src/training/train_nllb_lora.py" = [
+  "C901",   # train loop complexity is deliberate
+]
+"src/training/train_legal_mt.py" = [
+  "C901",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]
+force-single-line = false
+combine-as-imports = true
+lines-after-imports = 2
+
+[tool.ruff.format]
+quote-style = "single"
+indent-style = "space"
+line-ending = "auto"
+skip-magic-trailing-comma = false
+docstring-code-format = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+filterwarnings = [
+  "ignore::DeprecationWarning:swigvarlink",
+  "ignore::DeprecationWarning:importlib",
+]

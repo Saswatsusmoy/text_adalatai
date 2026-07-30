@@ -1,8 +1,9 @@
-"""Load training.yaml into plain dicts with light validation."""
+"""Load training YAML into dicts."""
 
 from pathlib import Path
 
 import yaml
+
 
 DEFAULT_CONFIG = Path('configs/training.yaml')
 
@@ -15,9 +16,7 @@ def load_training_config(path: str | Path = DEFAULT_CONFIG) -> dict:
         cfg = yaml.safe_load(f)
     if not isinstance(cfg, dict):
         raise ValueError('training config must be a mapping')
-    # peft required for Track D NLLB LoRA; optional for Track C1 from-scratch
-    required = ('model', 'data', 'optim', 'train', 'eval')
-    for key in required:
+    for key in ('model', 'data', 'optim', 'train', 'eval'):
         if key not in cfg:
             raise ValueError(f'training config missing section: {key}')
     return cfg

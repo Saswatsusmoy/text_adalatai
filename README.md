@@ -64,6 +64,10 @@ source .venv/bin/activate
 make install
 # or: pip install -r requirements.txt && python3 -m spacy download en_core_web_sm
 
+make install-dev         # + ruff, pre-commit (optional)
+make lint                # ruff check
+make format              # ruff format + autofix
+make check               # format-check + test
 make test
 make preprocess          # assignment: cleaning -> train/dev/test JSONL
 make external-ingest     # Stage A pool: MILPaC + Anuvaad -> parallel/
@@ -119,6 +123,18 @@ data/runs/                   # Training runs + PEFT checkpoints (gitignored)
 |--------|-----------|
 | **I** internal | `data/processed/test.jsonl` (190 pairs, docs 1/4/21) |
 | **E** external | `eval/milpac_test.jsonl` (117) + `eval/anuvaad_test.jsonl` (3k) |
+
+## Lint / format
+
+[Ruff](https://docs.astral.sh/ruff/) is configured in `pyproject.toml` (line length 100, single quotes, Python 3.10+).
+
+```bash
+pip install -r requirements-dev.txt   # or: make install-dev
+make lint          # ruff check
+make format        # ruff format + --fix
+make format-check  # CI-style no-write check
+pre-commit install # optional git hooks (.pre-commit-config.yaml)
+```
 
 ## Documentation map
 

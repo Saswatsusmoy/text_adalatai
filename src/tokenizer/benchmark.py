@@ -19,6 +19,7 @@ import sentencepiece as spm
 
 from src.config import DEV_DOC_IDS, TEST_DOC_IDS
 
+
 ALIGNED_PATH = Path('data/aligned/all.jsonl')
 PROCESSED_DIR = Path('data/processed')
 MODEL_DIR = Path('data/models/tokenizers')
@@ -57,6 +58,7 @@ def load_corpus(eval_split: str = 'held_out') -> list[dict]:
         return [p for p in aligned if _norm_doc_id(p.get('doc_id')) in HELD_OUT_DOCS]
     if eval_split == 'train':
         from src.config import TRAIN_DOC_IDS
+
         train = set(TRAIN_DOC_IDS)
         return [p for p in aligned if _norm_doc_id(p.get('doc_id')) in train]
     raise ValueError(f'unknown eval_split {eval_split}')
@@ -122,15 +124,12 @@ def benchmark_tokenizer(encode_fn, decode_fn, corpus, label='', vocab_size=0, de
 
 
 def print_table(results: list[dict]):
-    print(
-        f"{'Tokenizer':<36} {'Vocab':<7} {'Dev':<6} {'HI c/t':<8} "
-        f"{'HI/EN':<8} {'Total':<8}"
-    )
+    print(f'{"Tokenizer":<36} {"Vocab":<7} {"Dev":<6} {"HI c/t":<8} {"HI/EN":<8} {"Total":<8}')
     print('-' * 80)
     for r in sorted(results, key=lambda x: -x.get('hi_chars_per_tok', 0)):
         print(
-            f"{r['name']:<36} {r['vocab']:<7} {str(r.get('dev_tokens', '-')):<6} "
-            f"{r['hi_chars_per_tok']:<8.2f} {r['hi_en_ratio']:<8.3f} {r['total_tokens']:<8,}"
+            f'{r["name"]:<36} {r["vocab"]:<7} {r.get("dev_tokens", "-")!s:<6} '
+            f'{r["hi_chars_per_tok"]:<8.2f} {r["hi_en_ratio"]:<8.3f} {r["total_tokens"]:<8,}'
         )
 
 
@@ -159,7 +158,7 @@ def discover_custom_models() -> list[tuple[Path, str]]:
     # v2 legal
     if MODEL_DIR.exists():
         for mp in sorted(MODEL_DIR.glob('sentencepiece_legal_v2_*.model')):
-            label = f"v2 {mp.stem.replace('sentencepiece_legal_v2_', 'SP ')}"
+            label = f'v2 {mp.stem.replace("sentencepiece_legal_v2_", "SP ")}'
             found.append((mp, label))
     return found
 
@@ -202,13 +201,13 @@ def run(full: bool = False, eval_split: str = 'held_out') -> list[dict]:
     for repo_id, label in models:
         try:
             path = hf_hub_download(
-                repo_id=repo_id, filename='tokenizer.json', cache_dir='/tmp/tokenizers',
+                repo_id=repo_id,
+                filename='tokenizer.json',
+                cache_dir='/tmp/tokenizers',
             )
             tok = HFTok.from_file(path)
             vocab = tok.get_vocab_size()
-            dev = sum(
-                1 for k in tok.get_vocab() if any(0x0900 <= ord(c) <= 0x097F for c in k)
-            )
+            dev = sum(1 for k in tok.get_vocab() if any(0x0900 <= ord(c) <= 0x097F for c in k))
             r = benchmark_tokenizer(
                 lambda t, tok=tok: tok.encode(t).ids,
                 lambda ids, tok=tok: tok.decode(ids),
@@ -251,7 +250,9 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Benchmark tokenizers on EN-HI corpus')
     parser.add_argument(
-        '--full', action='store_true', help='Also bench a few HF / tiktoken models',
+        '--full',
+        action='store_true',
+        help='Also bench a few HF / tiktoken models',
     )
     parser.add_argument(
         '--eval',

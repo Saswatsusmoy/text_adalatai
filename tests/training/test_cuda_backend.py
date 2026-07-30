@@ -100,6 +100,7 @@ def test_save_peft_unwrap_compile_marker(tmp_path: Path):
 
 def test_save_peft_new_embed_rows(tmp_path: Path):
     import torch
+
     from src.training.train_nllb_lora import (
         NEW_EMBED_ROWS_NAME,
         _save_peft,

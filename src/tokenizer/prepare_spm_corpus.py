@@ -23,6 +23,7 @@ from pathlib import Path
 
 from src.config import DEV_DOC_IDS, TEST_DOC_IDS, TRAIN_DOC_IDS
 
+
 STAGE_A_PATH = Path('data/external/parallel/stage_a_en_hi.jsonl')
 TRAIN_PATH = Path('data/processed/train.jsonl')
 ALIGNED_PATH = Path('data/aligned/all.jsonl')
@@ -89,11 +90,7 @@ def lines_from_pairs(
 def lines_from_prarabdha(path: Path, max_lines: int | None, seed: int) -> list[str]:
     if not path.exists():
         return []
-    lines = [
-        ln.strip()
-        for ln in path.read_text(encoding='utf-8').splitlines()
-        if ln.strip()
-    ]
+    lines = [ln.strip() for ln in path.read_text(encoding='utf-8').splitlines() if ln.strip()]
     if max_lines is not None and max_lines < len(lines):
         rng = random.Random(seed)
         lines = rng.sample(lines, max_lines)
@@ -131,11 +128,10 @@ def build_corpus(
     if not train_pairs and aligned_path.exists():
         # Fallback: filter aligned by TRAIN_DOC_IDS if processed/ missing
         all_pairs = load_jsonl_lines(aligned_path)
-        train_pairs = [
-            p for p in all_pairs
-            if _norm_doc_id(p.get('doc_id')) in TRAIN_DOCS
-        ]
-        stats['sources']['assignment_train_fallback'] = 'aligned/all.jsonl filtered by TRAIN_DOC_IDS'
+        train_pairs = [p for p in all_pairs if _norm_doc_id(p.get('doc_id')) in TRAIN_DOCS]
+        stats['sources']['assignment_train_fallback'] = (
+            'aligned/all.jsonl filtered by TRAIN_DOC_IDS'
+        )
 
     # Hard reject any train_pairs with forbidden docs
     for p in train_pairs:
@@ -145,7 +141,10 @@ def build_corpus(
             raise ValueError(f'assignment_train: doc_id {did} not in TRAIN_DOC_IDS')
 
     train_lines = lines_from_pairs(
-        train_pairs, mode, require_train_docs=True, source_label='assignment_train',
+        train_pairs,
+        mode,
+        require_train_docs=True,
+        source_label='assignment_train',
     )
     stats['sources']['assignment_train'] = {
         'pairs': len(train_pairs),
@@ -241,9 +240,9 @@ def dedupe_text_file(
     if verbose:
         print(f'Dedupe {in_path.name} -> {out_path.name}')
         print(
-            f"  kept={kept:,} dups={skipped_dup:,} "
-            f"trunc={truncated:,} chars={chars_out:,} "
-            f"dedupe_rate={stats['dedupe_rate']}"
+            f'  kept={kept:,} dups={skipped_dup:,} '
+            f'trunc={truncated:,} chars={chars_out:,} '
+            f'dedupe_rate={stats["dedupe_rate"]}'
         )
         print(f'  report={report}')
     return stats
@@ -269,8 +268,8 @@ def run(
     report_path.write_text(json.dumps(stats, indent=2, ensure_ascii=False), encoding='utf-8')
     if verbose:
         print(f'Wrote {out_path}')
-        print(f"  lines={stats['totals']['lines']:,} chars={stats['totals']['chars']:,}")
-        print(f"  devanagari_frac={stats['totals']['devanagari_char_frac']}")
+        print(f'  lines={stats["totals"]["lines"]:,} chars={stats["totals"]["chars"]:,}')
+        print(f'  devanagari_frac={stats["totals"]["devanagari_char_frac"]}')
         print(f'  report={report_path}')
 
     if dedupe or max_chars is not None:

@@ -107,7 +107,10 @@ class TestStageBReplayMix:
         write_jsonl(replay, replay_rows)
 
         cfg = _minimal_cfg(
-            tmp_path, stage_a=replay, stage_b=assign, replay_pool=replay,
+            tmp_path,
+            stage_a=replay,
+            stage_b=assign,
+            replay_pool=replay,
             assignment_frac=0.9,
         )
         out_dir = tmp_path / 'subsamples'
@@ -123,7 +126,7 @@ class TestStageBReplayMix:
 
         out = Path(man['output'])
         assert out.exists()
-        mixed = [json.loads(l) for l in out.read_text(encoding='utf-8').splitlines() if l]
+        mixed = [json.loads(line) for line in out.read_text(encoding='utf-8').splitlines() if line]
         roles = [r['mix_role'] for r in mixed]
         assert roles.count('assignment') == 90
         assert roles.count('replay') == 10
@@ -133,7 +136,7 @@ class TestStageBReplayMix:
             if r['mix_role'] == 'replay':
                 assert r['en_text'] not in assign_en
 
-        man_path = out_dir / f"stage_b_{man['tag']}_manifest.json"
+        man_path = out_dir / f'stage_b_{man["tag"]}_manifest.json'
         assert man_path.exists()
 
     def test_deterministic_seed(self, tmp_path: Path, monkeypatch):
@@ -164,28 +167,27 @@ class TestStageBReplayMix:
             ],
         )
         cfg = _minimal_cfg(
-            tmp_path, stage_a=replay, stage_b=assign, replay_pool=replay,
+            tmp_path,
+            stage_a=replay,
+            stage_b=assign,
+            replay_pool=replay,
         )
         out_dir = tmp_path / 'subsamples'
         monkeypatch.setattr(mod, 'STAGE_B_OUT_DIR', out_dir)
         m1 = build_stage_b_replay_mix(config_path=cfg, verbose=False)
         # Rebuild overwrites same path; compare replay set by re-running load
         rows1 = [
-            json.loads(l)
-            for l in Path(m1['output']).read_text(encoding='utf-8').splitlines()
-            if l
+            json.loads(line)
+            for line in Path(m1['output']).read_text(encoding='utf-8').splitlines()
+            if line
         ]
-        keys1 = sorted(
-            (r['en_text'], r['mix_role']) for r in rows1 if r['mix_role'] == 'replay'
-        )
+        keys1 = sorted((r['en_text'], r['mix_role']) for r in rows1 if r['mix_role'] == 'replay')
         m2 = build_stage_b_replay_mix(config_path=cfg, verbose=False)
         rows2 = [
-            json.loads(l)
-            for l in Path(m2['output']).read_text(encoding='utf-8').splitlines()
-            if l
+            json.loads(line)
+            for line in Path(m2['output']).read_text(encoding='utf-8').splitlines()
+            if line
         ]
-        keys2 = sorted(
-            (r['en_text'], r['mix_role']) for r in rows2 if r['mix_role'] == 'replay'
-        )
+        keys2 = sorted((r['en_text'], r['mix_role']) for r in rows2 if r['mix_role'] == 'replay')
         assert keys1 == keys2
         assert m1['n_replay'] == 2  # round(18 * 0.1/0.9) = 2

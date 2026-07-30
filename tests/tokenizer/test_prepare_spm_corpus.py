@@ -16,7 +16,7 @@ from src.tokenizer.prepare_spm_corpus import (
 
 class TestFirewall:
     def test_forbidden_is_dev_and_test(self):
-        assert FORBIDDEN_DOCS == set(DEV_DOC_IDS) | set(TEST_DOC_IDS)
+        assert set(DEV_DOC_IDS) | set(TEST_DOC_IDS) == FORBIDDEN_DOCS
         assert FORBIDDEN_DOCS.isdisjoint(set(TRAIN_DOC_IDS))
 
     def test_rejects_test_doc_in_train_filter(self):
@@ -47,7 +47,10 @@ class TestFirewall:
         # For doc in FORBIDDEN with require_train_docs, it raises before skip
         only_train = [pairs[0]]
         lines = lines_from_pairs(
-            only_train, 'joint', require_train_docs=True, source_label='t',
+            only_train,
+            'joint',
+            require_train_docs=True,
+            source_label='t',
         )
         assert len(lines) == 2
 

@@ -2,8 +2,6 @@
 
 from pathlib import Path
 
-import torch
-
 from src.config import SPM_V2_PRIMARY
 from src.training.legal_mt_data import collate_legal_mt
 from src.training.spm_tokenizer import LegalSpmTokenizer

@@ -59,19 +59,24 @@ class TestSplitExternalEval:
 
         assert man['counts']['milpac_test'] >= 1
         assert man['counts']['anuvaad_test'] == 50
-        assert man['counts']['stage_a_train'] + man['counts']['milpac_dev'] + man[
-            'counts'
-        ]['milpac_test'] + man['counts']['anuvaad_dev'] + man['counts']['anuvaad_test'] == 600
+        assert (
+            man['counts']['stage_a_train']
+            + man['counts']['milpac_dev']
+            + man['counts']['milpac_test']
+            + man['counts']['anuvaad_dev']
+            + man['counts']['anuvaad_test']
+            == 600
+        )
 
         train = [
-            json.loads(l)
-            for l in train_path.read_text(encoding='utf-8').splitlines()
-            if l.strip()
+            json.loads(line)
+            for line in train_path.read_text(encoding='utf-8').splitlines()
+            if line.strip()
         ]
         test_a = [
-            json.loads(l)
-            for l in (eval_dir / 'anuvaad_test.jsonl').read_text(encoding='utf-8').splitlines()
-            if l.strip()
+            json.loads(line)
+            for line in (eval_dir / 'anuvaad_test.jsonl').read_text(encoding='utf-8').splitlines()
+            if line.strip()
         ]
         train_keys = {pair_key(p) for p in train}
         for p in test_a:

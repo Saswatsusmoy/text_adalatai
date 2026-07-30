@@ -1,4 +1,4 @@
-"""CUDA / Hopper (H100/H200) training helpers for NLLB LoRA."""
+"""CUDA / Hopper helpers for NLLB LoRA training."""
 
 from __future__ import annotations
 
@@ -13,9 +13,7 @@ def resolve_dtype(name: str | None, device: str):
     if name in ('bf16', 'bfloat16'):
         if device.startswith('cuda') and torch.cuda.is_bf16_supported():
             return torch.bfloat16
-        if device == 'mps':
-            return torch.float16
-        return torch.float32
+        return torch.float16 if device == 'mps' else torch.float32
     if name in ('fp16', 'float16'):
         if device.startswith('cuda') or device == 'mps':
             return torch.float16
@@ -28,21 +26,18 @@ def pick_best_cuda_device() -> str | None:
 
     if not torch.cuda.is_available() or torch.cuda.device_count() == 0:
         return None
-    best_i = 0
-    best_free = -1
+    best_i, best_free = 0, -1
     for i in range(torch.cuda.device_count()):
         try:
-            free, _total = torch.cuda.mem_get_info(i)
+            free, _ = torch.cuda.mem_get_info(i)
         except Exception:
             free = 0
         if free > best_free:
-            best_free = free
-            best_i = i
+            best_free, best_i = free, i
     return f'cuda:{best_i}'
 
 
 def enable_flash_sdp(prefer_flash: bool = True) -> dict:
-    """Prefer Flash / mem-efficient SDPA; disable slow math kernel when possible."""
     import torch
 
     info = {'flash': False, 'mem_efficient': False, 'math': True}
@@ -51,8 +46,8 @@ def enable_flash_sdp(prefer_flash: bool = True) -> dict:
             torch.backends.cuda.enable_flash_sdp(True)
             torch.backends.cuda.enable_mem_efficient_sdp(True)
             torch.backends.cuda.enable_math_sdp(False)
-            info = {'flash': True, 'mem_efficient': True, 'math': False}
-        elif hasattr(torch.backends.cuda, 'enable_mem_efficient_sdp'):
+            return {'flash': True, 'mem_efficient': True, 'math': False}
+        if hasattr(torch.backends.cuda, 'enable_mem_efficient_sdp'):
             torch.backends.cuda.enable_mem_efficient_sdp(True)
             info['mem_efficient'] = True
     except Exception:
@@ -61,10 +56,6 @@ def enable_flash_sdp(prefer_flash: bool = True) -> dict:
 
 
 def configure_torch_backend(device: str, cfg: dict | None = None) -> dict:
-    """
-    Enable Hopper-friendly matmul paths and SDPA kernels.
-    Safe no-ops on MPS/CPU.
-    """
     import torch
 
     cfg = cfg or {}
@@ -80,7 +71,6 @@ def configure_torch_backend(device: str, cfg: dict | None = None) -> dict:
         'cuda_cc': None,
         'free_gb': None,
     }
-
     if not device.startswith('cuda') or not torch.cuda.is_available():
         return info
 
@@ -91,17 +81,15 @@ def configure_torch_backend(device: str, cfg: dict | None = None) -> dict:
     info['cuda_cc'] = f'{props.major}.{props.minor}'
     try:
         free, total = torch.cuda.mem_get_info(idx)
-        info['free_gb'] = round(free / (1024 ** 3), 2)
-        info['total_gb'] = round(total / (1024 ** 3), 2)
+        info['free_gb'] = round(free / (1024**3), 2)
+        info['total_gb'] = round(total / (1024**3), 2)
     except Exception:
         pass
 
-    allow_tf32 = bool(hw.get('allow_tf32', True))
-    if allow_tf32:
+    if bool(hw.get('allow_tf32', True)):
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
         try:
-            # 'high' uses TF32 Tensor Cores on Ampere/Hopper for fp32 matmul
             torch.set_float32_matmul_precision('high')
             info['matmul_precision'] = 'high'
         except Exception:
@@ -112,26 +100,21 @@ def configure_torch_backend(device: str, cfg: dict | None = None) -> dict:
         torch.backends.cudnn.benchmark = True
         info['cudnn_benchmark'] = True
 
-    if bool(hw.get('allow_fp16_reduced_precision_reduction', True)):
-        try:
-            torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = True
-        except Exception:
-            pass
-    if bool(hw.get('allow_bf16_reduced_precision_reduction', True)):
-        try:
-            torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction = True
-        except Exception:
-            pass
+    for attr, key in (
+        ('allow_fp16_reduced_precision_reduction', 'allow_fp16_reduced_precision_reduction'),
+        ('allow_bf16_reduced_precision_reduction', 'allow_bf16_reduced_precision_reduction'),
+    ):
+        if bool(hw.get(key, True)):
+            try:
+                setattr(torch.backends.cuda.matmul, attr, True)
+            except Exception:
+                pass
 
-    sdp = enable_flash_sdp(prefer_flash=bool(hw.get('prefer_flash_sdp', True)))
-    info['sdp_backends'] = sdp
+    info['sdp_backends'] = enable_flash_sdp(prefer_flash=bool(hw.get('prefer_flash_sdp', True)))
     info['sdpa'] = True
-
     os.environ.setdefault('PYTORCH_CUDA_ALLOC_CONF', 'expandable_segments:True')
-    # NCCL throughput on multi-GPU single node
     os.environ.setdefault('NCCL_P2P_DISABLE', '0')
-    os.environ.setdefault('NCCL_IB_DISABLE', '1')  # single-node VM; no IB required
-
+    os.environ.setdefault('NCCL_IB_DISABLE', '1')
     return info
 
 
@@ -142,7 +125,7 @@ def gpu_mem_gb(device: str) -> float | None:
         return None
     idx = int(device.split(':')[1]) if ':' in device else torch.cuda.current_device()
     try:
-        return round(torch.cuda.memory_allocated(idx) / (1024 ** 3), 3)
+        return round(torch.cuda.memory_allocated(idx) / (1024**3), 3)
     except Exception:
         return None
 
@@ -152,27 +135,21 @@ def rss_gb() -> float | None:
         import resource
 
         raw = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        if sys.platform == 'darwin':
-            return round(raw / (1024 ** 3), 3)
-        return round(raw / (1024 ** 2), 3)
+        return round(raw / (1024**3 if sys.platform == 'darwin' else 1024**2), 3)
     except Exception:
         return None
 
 
 def maybe_compile(model, device: str, enabled: bool, mode: str = 'default'):
-    """torch.compile for CUDA; no-op elsewhere. Failures fall back to eager."""
     if not enabled or not device.startswith('cuda'):
         return model, False
     import torch
 
     try:
-        # dynamic=False assumes static padded shapes (pad_to_fixed)
-        compiled = torch.compile(model, mode=mode, fullgraph=False, dynamic=False)
-        return compiled, True
+        return torch.compile(model, mode=mode, fullgraph=False, dynamic=False), True
     except TypeError:
         try:
-            compiled = torch.compile(model, mode=mode, fullgraph=False)
-            return compiled, True
+            return torch.compile(model, mode=mode, fullgraph=False), True
         except Exception as e:
             print(f'torch.compile disabled ({type(e).__name__}: {e})')
             return model, False
@@ -183,13 +160,12 @@ def maybe_compile(model, device: str, enabled: bool, mode: str = 'default'):
 
 def dataloader_kwargs(device: str, cfg: dict | None = None) -> dict:
     cfg = cfg or {}
-    train = cfg.get('train') or {}
-    hw = cfg.get('hardware') or {}
+    train, hw = cfg.get('train') or {}, cfg.get('hardware') or {}
     n_workers = int(train.get('num_workers', hw.get('num_workers', 0)))
-    pin = bool(train.get('pin_memory', device.startswith('cuda')))
+    cuda = device.startswith('cuda')
     kw = {
-        'num_workers': n_workers if device.startswith('cuda') else 0,
-        'pin_memory': pin and device.startswith('cuda'),
+        'num_workers': n_workers if cuda else 0,
+        'pin_memory': bool(train.get('pin_memory', cuda)) and cuda,
     }
     if kw['num_workers'] > 0:
         kw['persistent_workers'] = True

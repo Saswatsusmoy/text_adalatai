@@ -8,6 +8,7 @@ from pathlib import Path
 
 import sentencepiece as spm
 
+
 MODEL_DIR = Path('data/models/tokenizers')
 
 # Memory profiles for 16GB-class machines. 'sample' is the safe default for huge joint dumps.
@@ -70,7 +71,10 @@ def train(
         vocab_size=vocab_size,
         character_coverage=1.0,
         model_type=model_type,
-        pad_id=0, unk_id=1, bos_id=2, eos_id=3,
+        pad_id=0,
+        unk_id=1,
+        bos_id=2,
+        eos_id=3,
         shuffle_input_sentence=True,
         **opts,
     )

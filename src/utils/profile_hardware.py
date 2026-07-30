@@ -15,6 +15,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+
 OUT_PATH = Path('data/analysis/hardware_profile.json')
 
 
@@ -53,7 +54,7 @@ def _sp_hardware() -> dict:
 def _bytes_to_gb(n: int | float | None) -> float | None:
     if n is None:
         return None
-    return round(float(n) / (1024 ** 3), 2)
+    return round(float(n) / (1024**3), 2)
 
 
 def profile_mlx() -> dict:
@@ -77,8 +78,9 @@ def profile_mlx() -> dict:
     except Exception as e:
         info['error'] = str(e)
     try:
-        import mlx_lm  # noqa: F401
         from importlib.metadata import version
+
+        import mlx_lm  # noqa: F401
 
         info['mlx_lm_installed'] = True
         try:
@@ -184,7 +186,9 @@ def recommend(profile: dict) -> dict:
     elif mem_gb <= 36:
         rec['quantization'] = '4bit_or_8bit'
         rec['max_batch_hint'] = 2
-        rec['notes'].append('32GB class: 3B-7B LoRA more comfortable; still prefer LoRA over full FT.')
+        rec['notes'].append(
+            '32GB class: 3B-7B LoRA more comfortable; still prefer LoRA over full FT.'
+        )
     else:
         rec['quantization'] = 'fp16_or_4bit'
         rec['max_batch_hint'] = 4
@@ -243,12 +247,14 @@ def run(verbose: bool = True) -> dict:
 
     if verbose:
         print('=== Hardware profile ===')
-        print(f"chip:     {profile.get('chip')}")
-        print(f"model:    {profile.get('model_name')} ({profile.get('model_identifier')})")
-        print(f"memory:   {profile.get('memory_gb')} GB unified")
-        print(f"cpus:     physical={profile.get('physical_cpu')} logical={profile.get('logical_cpu')}")
-        print(f"mlx:      {profile['mlx']}")
-        print(f"torch:    {profile['torch']}")
+        print(f'chip:     {profile.get("chip")}')
+        print(f'model:    {profile.get("model_name")} ({profile.get("model_identifier")})')
+        print(f'memory:   {profile.get("memory_gb")} GB unified')
+        print(
+            f'cpus:     physical={profile.get("physical_cpu")} logical={profile.get("logical_cpu")}'
+        )
+        print(f'mlx:      {profile["mlx"]}')
+        print(f'torch:    {profile["torch"]}')
         print('--- recommendations ---')
         rec = profile['recommendations']
         for k, v in rec.items():

@@ -1,4 +1,4 @@
-"""DistributedDataParallel helpers (torchrun / NCCL)."""
+"""DDP helpers (torchrun / NCCL)."""
 
 from __future__ import annotations
 
@@ -32,10 +32,6 @@ def is_main() -> bool:
 
 
 def setup_distributed() -> dict:
-    """
-    Init process group if launched under torchrun (LOCAL_RANK set).
-    Returns {enabled, rank, local_rank, world_size, device}.
-    """
     import torch
     import torch.distributed as dist
 
@@ -51,18 +47,18 @@ def setup_distributed() -> dict:
 
     torch.cuda.set_device(local_rank)
     if not dist.is_initialized():
-        # device_id mutes NCCL barrier device warnings on torch 2.x
         try:
-            dist.init_process_group(backend='nccl', device_id=torch.device(f'cuda:{local_rank}'))
+            dist.init_process_group(
+                backend='nccl',
+                device_id=torch.device(f'cuda:{local_rank}'),
+            )
         except TypeError:
             dist.init_process_group(backend='nccl')
-    rank = dist.get_rank()
-    world = dist.get_world_size()
     return {
         'enabled': True,
-        'rank': rank,
+        'rank': dist.get_rank(),
         'local_rank': local_rank,
-        'world_size': world,
+        'world_size': dist.get_world_size(),
         'device': f'cuda:{local_rank}',
     }
 
@@ -77,7 +73,6 @@ def cleanup_distributed():
 
 
 def unwrap_model(model):
-    """Strip DDP / compile wrappers for save and generate."""
     m = model
     if hasattr(m, 'module'):
         m = m.module
@@ -91,3 +86,19 @@ def barrier():
         import torch.distributed as dist
 
         dist.barrier()
+
+
+def all_reduce_max(flag):
+    if not dist_is_available():
+        return
+    import torch.distributed as dist
+
+    dist.all_reduce(flag, op=dist.ReduceOp.MAX)
+
+
+def broadcast_object(obj, src: int = 0):
+    import torch.distributed as dist
+
+    box = [obj] if get_rank() == src else [None]
+    dist.broadcast_object_list(box, src=src)
+    return box[0]

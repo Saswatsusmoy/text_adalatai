@@ -1,25 +1,8 @@
-"""
-Track D: LoRA fine-tune NLLB-600M for legal EN->HI (MPS local or CUDA/Hopper DDP).
-
-Follows docs/TRAINING_STRATEGY.md and configs/training.yaml (or training_h200.yaml).
-
-Usage:
-  # Stage A1 local MPS
-  PYTHONPATH=. python3 -m src.training.train_nllb_lora --curriculum A1
-
-  # Stage A1 dual H200 (accuracy-preserving global batch)
-  torchrun --standalone --nproc_per_node=2 -m src.training.train_nllb_lora \\
-      --config configs/training_h200.yaml --curriculum A1 --device cuda
-"""
+"""Track D: LoRA fine-tune NLLB-600M legal EN->HI (MPS or CUDA DDP)."""
 
 from __future__ import annotations
 
-import gc
-import json
-import os
-import random
 import time
-from contextlib import nullcontext
 from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
@@ -33,6 +16,17 @@ from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, get_cosine_schedu
 from src.evaluation.eval_sets import load_jsonl
 from src.evaluation.metrics_mt import score_pairs
 from src.evaluation.zero_shot_nllb import pick_device, translate_batch
+from src.training.common import (
+    append_jsonl,
+    autocast_ctx,
+    count_nonempty_lines,
+    empty_device_cache,
+    is_cuda,
+    loss_value,
+    move_batch,
+    set_seed,
+    write_json,
+)
 from src.training.config import deep_get, load_training_config
 from src.training.cuda_backend import (
     build_optimizer,
@@ -45,10 +39,10 @@ from src.training.cuda_backend import (
     rss_gb,
 )
 from src.training.dist_utils import (
+    all_reduce_max,
     barrier,
+    broadcast_object,
     cleanup_distributed,
-    get_rank,
-    get_world_size,
     is_main,
     setup_distributed,
     unwrap_model,
@@ -57,31 +51,7 @@ from src.training.nllb_data import NllbJsonlDataset, collate_nllb
 from src.training.subsample import build_stage_b_replay_mix, build_subsample
 
 
-def set_seed(seed: int, rank: int = 0):
-    random.seed(seed + rank)
-    torch.manual_seed(seed + rank)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed + rank)
-
-
-def append_jsonl(path: Path, row: dict):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, 'a', encoding='utf-8') as f:
-        f.write(json.dumps(row, ensure_ascii=False) + '\n')
-
-
-def _autocast_ctx(device: str, dtype: torch.dtype):
-    if device.startswith('cuda') and dtype in (torch.float16, torch.bfloat16):
-        return torch.autocast(device_type='cuda', dtype=dtype)
-    return nullcontext()
-
-
-def empty_device_cache(device: str):
-    gc.collect()
-    if device == 'mps' and hasattr(torch, 'mps'):
-        torch.mps.empty_cache()
-    elif device.startswith('cuda') and torch.cuda.is_available():
-        torch.cuda.empty_cache()
+NEW_EMBED_ROWS_NAME = 'new_embed_rows.pt'
 
 
 def discover_lora_targets(model, preferred: list[str]) -> list[str]:
@@ -89,11 +59,29 @@ def discover_lora_targets(model, preferred: list[str]) -> list[str]:
     found = [t for t in preferred if t in names]
     if found:
         return found
-    hits = set()
-    for n, m in model.named_modules():
-        if any(n.endswith(t) for t in preferred):
-            hits.add(n.split('.')[-1])
+    hits = {
+        n.split('.')[-1] for n, _ in model.named_modules() if any(n.endswith(t) for t in preferred)
+    }
     return sorted(hits) if hits else preferred
+
+
+def _path_suffix_targets(model, suffixes: list[str], path_pred) -> list[str]:
+    full = [
+        name
+        for name, mod in model.named_modules()
+        if (type(mod).__name__ == 'Linear' or hasattr(mod, 'weight'))
+        and any(name.endswith(s) for s in suffixes)
+        and path_pred(name)
+    ]
+    if full:
+        return full
+    return sorted(
+        {
+            name.split('.')[-1]
+            for name, _ in model.named_modules()
+            if any(name.endswith(s) for s in suffixes) and path_pred(name)
+        }
+    )
 
 
 def build_lora_config(cfg: dict, model) -> LoraConfig:
@@ -101,34 +89,43 @@ def build_lora_config(cfg: dict, model) -> LoraConfig:
     r = int(deep_get(cfg, 'peft', 'r', default=16))
     alpha = int(deep_get(cfg, 'peft', 'lora_alpha', default=32))
     dropout = float(deep_get(cfg, 'peft', 'lora_dropout', default=0.05))
-    preferred = list(deep_get(cfg, 'peft', 'target_modules') or [
-        'q_proj', 'k_proj', 'v_proj', 'out_proj',
-    ])
+    preferred = list(
+        deep_get(cfg, 'peft', 'target_modules')
+        or [
+            'q_proj',
+            'k_proj',
+            'v_proj',
+            'out_proj',
+        ]
+    )
     ffn = ['fc1', 'fc2']
-    layers_to_transform = None
-    target = preferred
 
     if profile == 'attn_all':
         target = discover_lora_targets(model, preferred)
     elif profile == 'decoder_attn':
         target = _path_suffix_targets(
-            model, preferred, lambda n: '.decoder.layers.' in n and (
-                '.self_attn.' in n or '.encoder_attn.' in n
-            ),
+            model,
+            preferred,
+            lambda n: '.decoder.layers.' in n and ('.self_attn.' in n or '.encoder_attn.' in n),
         )
     elif profile == 'cross_attn':
-        target = _path_suffix_targets(
-            model, preferred, lambda n: '.encoder_attn.' in n,
-        )
+        target = _path_suffix_targets(model, preferred, lambda n: '.encoder_attn.' in n)
     elif profile == 'decoder_full':
         target = _path_suffix_targets(
-            model, preferred + ffn,
-            lambda n: '.decoder.layers.' in n and (
-                '.self_attn.' in n or '.encoder_attn.' in n
-                or n.endswith('.fc1') or n.endswith('.fc2')
+            model,
+            preferred + ffn,
+            lambda n: (
+                '.decoder.layers.' in n
+                and (
+                    '.self_attn.' in n
+                    or '.encoder_attn.' in n
+                    or n.endswith('.fc1')
+                    or n.endswith('.fc2')
+                )
             ),
         )
     elif profile == 'last4_decoder':
+
         def pred(n: str) -> bool:
             if '.decoder.layers.' not in n:
                 return False
@@ -136,17 +133,18 @@ def build_lora_config(cfg: dict, model) -> LoraConfig:
                 idx = int(n.split('.decoder.layers.')[1].split('.')[0])
             except (IndexError, ValueError):
                 return False
-            if idx < 8:
-                return False
-            return (
-                '.self_attn.' in n or '.encoder_attn.' in n
-                or n.endswith('.fc1') or n.endswith('.fc2')
+            return idx >= 8 and (
+                '.self_attn.' in n
+                or '.encoder_attn.' in n
+                or n.endswith('.fc1')
+                or n.endswith('.fc2')
             )
+
         target = _path_suffix_targets(model, preferred + ffn, pred)
     else:
         raise ValueError(
-            f"unknown peft.profile={profile!r}; "
-            f"use attn_all|decoder_attn|cross_attn|decoder_full|last4_decoder"
+            f'unknown peft.profile={profile!r}; '
+            f'use attn_all|decoder_attn|cross_attn|decoder_full|last4_decoder'
         )
 
     if not target:
@@ -168,39 +166,13 @@ def build_lora_config(cfg: dict, model) -> LoraConfig:
         target_modules=target,
         bias=deep_get(cfg, 'peft', 'bias', default='none'),
         task_type=TaskType.SEQ_2_SEQ_LM,
-        layers_to_transform=layers_to_transform,
+        layers_to_transform=None,
         modules_to_save=modules_to_save,
         use_dora=use_dora,
     )
 
 
-def _path_suffix_targets(model, suffixes: list[str], path_pred) -> list[str]:
-    full = []
-    for name, mod in model.named_modules():
-        if type(mod).__name__ != 'Linear' and not hasattr(mod, 'weight'):
-            continue
-        if not any(name.endswith(s) for s in suffixes):
-            continue
-        if path_pred(name):
-            full.append(name)
-    if full:
-        return full
-    leaves = []
-    for name, mod in model.named_modules():
-        if not any(name.endswith(s) for s in suffixes):
-            continue
-        if path_pred(name):
-            leaves.append(name.split('.')[-1])
-    return sorted(set(leaves))
-
-
-NEW_EMBED_ROWS_NAME = 'new_embed_rows.pt'
-
-
 def _save_peft(model, path: Path, tokenizer, new_embed_start: int | None = None):
-    """Save PEFT adapters (+ tokenizer). If new_embed_start is set, also dump
-    trained embedding rows [start:) so C1c v2 grad-mask emb is not lost
-    (modules_to_save=null does not persist those rows in the adapter)."""
     path = Path(path)
     path.mkdir(parents=True, exist_ok=True)
     raw = unwrap_model(model)
@@ -209,35 +181,35 @@ def _save_peft(model, path: Path, tokenizer, new_embed_start: int | None = None)
     else:
         torch.save(raw.state_dict(), path / 'pytorch_model.bin')
     tokenizer.save_pretrained(path)
-    if new_embed_start is not None:
-        emb = raw.get_input_embeddings() if hasattr(raw, 'get_input_embeddings') else None
-        if emb is not None and hasattr(emb, 'weight'):
-            start = int(new_embed_start)
-            w = emb.weight.detach().float().cpu()
-            payload = {
-                'new_embed_start': start,
-                'rows': w[start:].contiguous(),
-                'vocab_size': int(w.shape[0]),
-                'hidden': int(w.shape[1]),
-            }
-            torch.save(payload, path / NEW_EMBED_ROWS_NAME)
+    if new_embed_start is None:
+        return
+    emb = raw.get_input_embeddings() if hasattr(raw, 'get_input_embeddings') else None
+    if emb is None or not hasattr(emb, 'weight'):
+        return
+    start = int(new_embed_start)
+    w = emb.weight.detach().float().cpu()
+    torch.save(
+        {
+            'new_embed_start': start,
+            'rows': w[start:].contiguous(),
+            'vocab_size': int(w.shape[0]),
+            'hidden': int(w.shape[1]),
+        },
+        path / NEW_EMBED_ROWS_NAME,
+    )
 
 
 def apply_new_embed_rows(model, path: Path | str) -> bool:
-    """Load new_embed_rows.pt into model input emb (and tied lm_head if same storage)."""
     path = Path(path)
     f = path / NEW_EMBED_ROWS_NAME if path.is_dir() else path
     if not f.is_file():
         return False
     payload = torch.load(f, map_location='cpu', weights_only=True)
-    start = int(payload['new_embed_start'])
-    rows = payload['rows']
-    raw = unwrap_model(model)
-    emb = raw.get_input_embeddings()
+    start, rows = int(payload['new_embed_start']), payload['rows']
+    emb = unwrap_model(model).get_input_embeddings()
     if emb is None or not hasattr(emb, 'weight'):
         return False
-    w = emb.weight
-    n = rows.shape[0]
+    w, n = emb.weight, rows.shape[0]
     if start + n > w.shape[0] or rows.shape[1] != w.shape[1]:
         raise RuntimeError(
             f'new_embed_rows shape mismatch: start={start} rows={tuple(rows.shape)} '
@@ -259,11 +231,10 @@ def resolve_train_path(
         path = Path(override)
         if not path.exists():
             raise FileNotFoundError(path)
-        n = sum(1 for _ in open(path, encoding='utf-8') if _.strip())
         return path, {
             'curriculum': curriculum,
             'output': str(path),
-            'n': n,
+            'n': count_nonempty_lines(path),
             'prebuilt': True,
         }
     if stage == 'B':
@@ -277,7 +248,7 @@ def resolve_train_path(
         return path, {
             'curriculum': 'B',
             'output': str(path),
-            'n': sum(1 for _ in open(path, encoding='utf-8') if _.strip()),
+            'n': count_nonempty_lines(path),
             'prebuilt': True,
             'replay': False,
         }
@@ -285,7 +256,9 @@ def resolve_train_path(
         path = Path(deep_get(cfg, 'data', 'stage_a_train'))
         return path, {'curriculum': 'full', 'output': str(path), 'n': 'all'}
     man = build_subsample(
-        curriculum=curriculum, config_path=config_path, verbose=is_main(),
+        curriculum=curriculum,
+        config_path=config_path,
+        verbose=is_main(),
     )
     return Path(man['output']), man
 
@@ -300,14 +273,15 @@ def build_model(cfg: dict, device: str, resume_adapters: str | None = None):
     if hasattr(tokenizer, 'tgt_lang'):
         tokenizer.tgt_lang = tgt_lang
 
-    dtype_name = deep_get(cfg, 'model', 'torch_dtype', default='float32')
-    dtype = resolve_dtype(dtype_name, device)
+    dtype = resolve_dtype(deep_get(cfg, 'model', 'torch_dtype', default='float32'), device)
     load_kw = {'dtype': dtype} if dtype != torch.float32 else {}
 
-    if device.startswith('cuda'):
+    if is_cuda(device):
         try:
             base = AutoModelForSeq2SeqLM.from_pretrained(
-                model_id, attn_implementation='sdpa', **load_kw,
+                model_id,
+                attn_implementation='sdpa',
+                **load_kw,
             )
         except (TypeError, ValueError, OSError):
             base = AutoModelForSeq2SeqLM.from_pretrained(model_id, **load_kw)
@@ -323,9 +297,7 @@ def build_model(cfg: dict, device: str, resume_adapters: str | None = None):
 
     if deep_get(cfg, 'model', 'gradient_checkpointing', default=True):
         base.gradient_checkpointing_enable()
-        if hasattr(base, 'config'):
-            base.config.use_cache = False
-    elif hasattr(base, 'config'):
+    if hasattr(base, 'config'):
         base.config.use_cache = False
 
     if resume_adapters:
@@ -338,15 +310,14 @@ def build_model(cfg: dict, device: str, resume_adapters: str | None = None):
     lora_cfg = build_lora_config(cfg, base)
     profile = deep_get(cfg, 'peft', 'profile', default='decoder_attn')
     if is_main():
-        dora_tag = ' DoRA' if getattr(lora_cfg, 'use_dora', False) else ''
+        dora = ' DoRA' if getattr(lora_cfg, 'use_dora', False) else ''
         print(
-            f'LoRA{dora_tag} profile={profile} '
+            f'LoRA{dora} profile={profile} '
             f'target_modules={len(lora_cfg.target_modules or [])} '
             f'r={lora_cfg.r} alpha={lora_cfg.lora_alpha}'
         )
     model = get_peft_model(base, lora_cfg)
 
-    # C1c v2: train only NEW embedding rows; freeze pretrained emb mass
     new_emb_start = deep_get(cfg, 'peft', 'new_embed_start', default=None)
     if new_emb_start is not None:
         new_emb_start = int(new_emb_start)
@@ -362,8 +333,7 @@ def build_model(cfg: dict, device: str, resume_adapters: str | None = None):
             emb.weight.register_hook(_mask_old_emb_grad)
             if is_main():
                 print(
-                    f'new_embed_grad_mask: train emb rows '
-                    f'[{new_emb_start}:{emb.weight.shape[0]}]'
+                    f'new_embed_grad_mask: train emb rows [{new_emb_start}:{emb.weight.shape[0]}]'
                 )
 
     model.to(device)
@@ -371,27 +341,17 @@ def build_model(cfg: dict, device: str, resume_adapters: str | None = None):
 
 
 @torch.no_grad()
-def eval_loss(
-    model,
-    loader: DataLoader,
-    device: str,
-    max_batches: int | None = 50,
-    dtype: torch.dtype = torch.float32,
-) -> float:
+def eval_loss(model, loader, device, max_batches=50, dtype=torch.float32) -> float:
     raw = unwrap_model(model)
     raw.eval()
-    total = 0.0
-    n = 0
+    total, n = 0.0, 0
     for i, batch in enumerate(loader):
         if max_batches is not None and i >= max_batches:
             break
-        batch = {
-            k: v.to(device, non_blocking=device.startswith('cuda'))
-            for k, v in batch.items()
-        }
-        with _autocast_ctx(device, dtype):
+        batch = move_batch(batch, device)
+        with autocast_ctx(device, dtype):
             out = raw(**batch)
-        total += float(out.loss.detach().float().cpu())
+        total += loss_value(out.loss)
         n += 1
         del batch, out
     model.train()
@@ -402,27 +362,25 @@ def eval_loss(
 def eval_generate(
     model,
     tokenizer,
-    pairs: list[dict],
-    device: str,
-    max_pairs: int | None,
-    max_input_length: int,
-    max_new_tokens: int,
-    num_beams: int,
-    gen_batch_size: int = 1,
+    pairs,
+    device,
+    max_pairs,
+    max_input_length,
+    max_new_tokens,
+    num_beams,
+    gen_batch_size=1,
 ) -> dict:
     raw = unwrap_model(model)
     raw.eval()
     if max_pairs is not None:
         pairs = pairs[:max_pairs]
-    hyps = []
-    refs = [p['hi_text'] for p in pairs]
     texts = [p['en_text'] for p in pairs]
+    hyps = []
     bs = max(1, gen_batch_size)
     for i in range(0, len(texts), bs):
-        chunk = texts[i: i + bs]
         hyps.extend(
             translate_batch(
-                chunk,
+                texts[i : i + bs],
                 tokenizer,
                 raw,
                 device,
@@ -432,7 +390,17 @@ def eval_generate(
             )
         )
     model.train()
-    return score_pairs(hyps, refs)
+    return score_pairs(hyps, [p['hi_text'] for p in pairs])
+
+
+def _primary_chrf(gen: dict, weights: dict) -> float:
+    primary, wsum = 0.0, 0.0
+    for key, w in weights.items():
+        block = gen.get(key)
+        if block and 'chrfpp' in block:
+            primary += float(w) * float(block['chrfpp']['score'])
+            wsum += float(w)
+    return primary / wsum if wsum > 0 else 0.0
 
 
 def run(
@@ -447,67 +415,58 @@ def run(
 ) -> dict:
     cfg = load_training_config(config_path)
     dist_info = setup_distributed()
-    rank = dist_info['rank']
-    world = dist_info['world_size']
+    rank, world = dist_info['rank'], dist_info['world_size']
     main = is_main()
     verbose = verbose and main
-
-    seed = int(deep_get(cfg, 'run', 'seed', default=42))
-    set_seed(seed, rank=rank)
+    set_seed(int(deep_get(cfg, 'run', 'seed', default=42)), rank=rank)
 
     if dist_info['enabled']:
         device = dist_info['device']
     elif device is None:
-        if deep_get(cfg, 'hardware', 'pick_most_free_gpu', default=False):
-            device = pick_best_cuda_device() or pick_device()
-        else:
-            device = pick_device()
+        device = (
+            pick_best_cuda_device() or pick_device()
+            if deep_get(cfg, 'hardware', 'pick_most_free_gpu', default=False)
+            else pick_device()
+        )
     elif device == 'cuda':
         device = pick_best_cuda_device() or 'cuda:0'
 
     backend_info = configure_torch_backend(device, cfg)
-    backend_info['world_size'] = world
-    backend_info['rank'] = rank
-    backend_info['ddp'] = dist_info['enabled']
-
+    backend_info.update(world_size=world, rank=rank, ddp=dist_info['enabled'])
     if resume_adapters is None:
         resume_adapters = deep_get(cfg, 'resume', 'adapters', default=None)
 
     train_path, data_manifest = resolve_train_path(
-        cfg, stage, curriculum, config_path=config_path,
+        cfg,
+        stage,
+        curriculum,
+        config_path=config_path,
     )
     ts = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     tag = deep_get(cfg, 'run', 'tag', default='') or ''
     tag_part = f'_{tag}' if tag else ''
     if dist_info['enabled']:
         tag_part = f'{tag_part}_ddp{world}' if tag_part else f'_ddp{world}'
-    run_id = f"nllb600_{stage}_{curriculum}{tag_part}_{ts}"
-    # Broadcast run_id from rank 0 so all ranks share one directory
+    run_id = f'nllb600_{stage}_{curriculum}{tag_part}_{ts}'
     if dist_info['enabled']:
-        import torch.distributed as dist
-
-        obj = [run_id] if main else [None]
-        dist.broadcast_object_list(obj, src=0)
-        run_id = obj[0]
+        run_id = broadcast_object(run_id)
 
     run_dir = Path(deep_get(cfg, 'run', 'output_root', default='data/runs')) / run_id
-    ckpt_dir = run_dir / 'checkpoints'
-    metrics_dir = run_dir / 'metrics'
+    ckpt_dir, metrics_dir = run_dir / 'checkpoints', run_dir / 'metrics'
     if main:
         for d in (run_dir, ckpt_dir, metrics_dir, run_dir / 'hyps'):
             d.mkdir(parents=True, exist_ok=True)
-        snap = Path(config_path).read_text(encoding='utf-8')
-        (run_dir / 'config.snapshot.yaml').write_text(snap, encoding='utf-8')
-        if data_manifest:
-            (run_dir / 'data_manifest.json').write_text(
-                json.dumps(data_manifest, indent=2, ensure_ascii=False), encoding='utf-8',
-            )
-        (run_dir / 'backend_info.json').write_text(
-            json.dumps(backend_info, indent=2), encoding='utf-8',
+        (run_dir / 'config.snapshot.yaml').write_text(
+            Path(config_path).read_text(encoding='utf-8'),
+            encoding='utf-8',
         )
+        if data_manifest:
+            write_json(run_dir / 'data_manifest.json', data_manifest)
+        write_json(run_dir / 'backend_info.json', backend_info)
         if resume_adapters:
             (run_dir / 'resume_adapters.txt').write_text(
-                str(resume_adapters) + '\n', encoding='utf-8',
+                str(resume_adapters) + '\n',
+                encoding='utf-8',
             )
     barrier()
 
@@ -519,31 +478,36 @@ def run(
             print(f'resume_adapters={resume_adapters}')
         if backend_info.get('cuda_name'):
             print(
-                f"cuda={backend_info['cuda_name']} cc={backend_info['cuda_cc']} "
-                f"free_gb={backend_info.get('free_gb')} tf32={backend_info['tf32']} "
-                f"sdpa={backend_info['sdpa']} sdp={backend_info.get('sdp_backends')}"
+                f'cuda={backend_info["cuda_name"]} cc={backend_info["cuda_cc"]} '
+                f'free_gb={backend_info.get("free_gb")} tf32={backend_info["tf32"]} '
+                f'sdpa={backend_info["sdpa"]} sdp={backend_info.get("sdp_backends")}'
             )
 
     tokenizer, model, device, dtype = build_model(
-        cfg, device, resume_adapters=resume_adapters,
+        cfg,
+        device,
+        resume_adapters=resume_adapters,
     )
 
-    # torch.compile + DDP hangs on NLLB/PEFT (Dynamo cannot trace NCCL; inductor
-    # thrash after first collective). Keep compile for single-GPU only.
+    # torch.compile + DDP hangs on NLLB/PEFT (Dynamo/NCCL)
     compile_on = bool(deep_get(cfg, 'train', 'torch_compile', default=False))
     if dist_info['enabled'] and compile_on:
         if main:
             print('torch.compile disabled under DDP (NCCL/PEFT stability)')
         compile_on = False
-    compile_mode = deep_get(cfg, 'train', 'torch_compile_mode', default='default')
-    model, compiled = maybe_compile(model, device, compile_on, mode=compile_mode)
+    model, compiled = maybe_compile(
+        model,
+        device,
+        compile_on,
+        mode=deep_get(cfg, 'train', 'torch_compile_mode', default='default'),
+    )
 
     if dist_info['enabled']:
-        local_rank = dist_info['local_rank']
+        lr = dist_info['local_rank']
         model = nn.parallel.DistributedDataParallel(
             model,
-            device_ids=[local_rank],
-            output_device=local_rank,
+            device_ids=[lr],
+            output_device=lr,
             find_unused_parameters=bool(
                 deep_get(cfg, 'train', 'ddp_find_unused_parameters', default=True)
             ),
@@ -562,7 +526,6 @@ def run(
     max_tgt = int(deep_get(cfg, 'data', 'max_target_length', default=256))
     src_lang = deep_get(cfg, 'model', 'src_lang', default='eng_Latn')
     tgt_lang = deep_get(cfg, 'model', 'tgt_lang', default='hin_Deva')
-
     train_ds = NllbJsonlDataset(
         train_path,
         tokenizer,
@@ -577,28 +540,24 @@ def run(
     pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else 0
     pad_mult = int(deep_get(cfg, 'train', 'pad_to_multiple_of', default=1))
     pad_fixed = bool(deep_get(cfg, 'train', 'pad_to_fixed', default=False))
-    fixed = (max_src, max_tgt) if pad_fixed else None
     collate = partial(
         collate_nllb,
         pad_token_id=pad_id,
         pad_to_multiple_of=pad_mult,
-        pad_to_fixed=fixed,
+        pad_to_fixed=(max_src, max_tgt) if pad_fixed else None,
     )
 
-    # Global batch preserved: batch_size is PER DEVICE
     batch_size = int(deep_get(cfg, 'train', 'batch_size', default=1))
     target_global = deep_get(cfg, 'train', 'global_batch_size', default=None)
     if target_global is not None:
         target_global = int(target_global)
-        # auto-split across world for parity with single-GPU recipe
-        if batch_size * world != target_global and world > 1:
-            if target_global % world == 0:
-                batch_size = target_global // world
-                if verbose:
-                    print(
-                        f'global_batch_size={target_global} -> '
-                        f'per_device_batch={batch_size} (world={world})'
-                    )
+        if batch_size * world != target_global and world > 1 and target_global % world == 0:
+            batch_size = target_global // world
+            if verbose:
+                print(
+                    f'global_batch_size={target_global} -> '
+                    f'per_device_batch={batch_size} (world={world})'
+                )
 
     dl_kw = dataloader_kwargs(device, cfg)
     sampler = None
@@ -608,7 +567,7 @@ def run(
             num_replicas=world,
             rank=rank,
             shuffle=True,
-            seed=seed,
+            seed=int(deep_get(cfg, 'run', 'seed', default=42)),
             drop_last=False,
         )
     train_loader = DataLoader(
@@ -621,21 +580,29 @@ def run(
         **dl_kw,
     )
 
-    def make_loader(path: str | Path, max_pairs: int | None = None):
+    def make_loader(path, max_pairs=None):
         p = Path(path)
         if not p.exists():
             return None
         ds = NllbJsonlDataset(
-            p, tokenizer, src_lang=src_lang, tgt_lang=tgt_lang,
-            max_source_length=max_src, max_target_length=max_tgt, max_pairs=max_pairs,
+            p,
+            tokenizer,
+            src_lang=src_lang,
+            tgt_lang=tgt_lang,
+            max_source_length=max_src,
+            max_target_length=max_tgt,
+            max_pairs=max_pairs,
         )
         if len(ds) == 0:
             return None
         eval_bs = int(deep_get(cfg, 'decode', 'eval_batch_size', default=1))
-        if not device.startswith('cuda'):
+        if not is_cuda(device):
             eval_bs = 1
         return DataLoader(
-            ds, batch_size=eval_bs, shuffle=False, collate_fn=collate,
+            ds,
+            batch_size=eval_bs,
+            shuffle=False,
+            collate_fn=collate,
             num_workers=min(2, dl_kw.get('num_workers', 0)),
             pin_memory=dl_kw.get('pin_memory', False),
         )
@@ -646,7 +613,12 @@ def run(
     )
 
     lr = float(
-        deep_get(cfg, 'optim', 'lr_stage_b' if stage == 'B' else 'lr', default=1e-4)
+        deep_get(
+            cfg,
+            'optim',
+            'lr_stage_b' if stage == 'B' else 'lr',
+            default=1e-4,
+        )
     )
     weight_decay = float(deep_get(cfg, 'optim', 'weight_decay', default=0.01))
     betas = (
@@ -667,9 +639,10 @@ def run(
     )
     max_steps = int(max_steps if max_steps is not None else default_max)
     warmup_ratio = float(deep_get(cfg, 'optim', 'warmup_ratio', default=0.05))
-    warmup_steps = max(1, int(max_steps * warmup_ratio))
     scheduler = get_cosine_schedule_with_warmup(
-        optimizer, num_warmup_steps=warmup_steps, num_training_steps=max_steps,
+        optimizer,
+        num_warmup_steps=max(1, int(max_steps * warmup_ratio)),
+        num_training_steps=max_steps,
     )
     max_grad_norm = float(deep_get(cfg, 'optim', 'max_grad_norm', default=1.0))
     log_every = int(deep_get(cfg, 'train', 'log_every_steps', default=20))
@@ -696,23 +669,18 @@ def run(
         load_jsonl(Path(deep_get(cfg, 'eval', 'policy_E_anuvaad_dev'))) if main else []
     )
 
-    train_log = metrics_dir / 'train_log.jsonl'
-    eval_log = metrics_dir / 'eval_log.jsonl'
-
+    train_log, eval_log = metrics_dir / 'train_log.jsonl', metrics_dir / 'eval_log.jsonl'
     model.train()
-    global_step = 0
-    micro = 0
+    global_step = micro = 0
     running_loss = 0.0
-    best_primary = -1e9
-    best_step = -1
-    bad_evals = 0
-    t0 = time.time()
-    epoch = 0
+    best_primary, best_step, bad_evals = -1e9, -1, 0
+    t0, epoch = time.time(), 0
     if sampler is not None:
         sampler.set_epoch(epoch)
     data_iter = iter(train_loader)
-
     global_batch = batch_size * world * accum
+    stop_flag = torch.zeros(1, device=device if is_cuda(device) else 'cpu')
+
     if verbose:
         print(
             f'train pairs={len(train_ds)} max_steps={max_steps} '
@@ -720,8 +688,6 @@ def run(
             f'global_batch={global_batch} lr={lr} pad_fixed={pad_fixed} '
             f'pad_mult={pad_mult}'
         )
-
-    stop_flag = torch.zeros(1, device=device if device.startswith('cuda') else 'cpu')
 
     while global_step < max_steps:
         if dist_info['enabled'] and stop_flag.item() > 0:
@@ -735,30 +701,28 @@ def run(
             data_iter = iter(train_loader)
             batch = next(data_iter)
 
-        batch = {
-            k: v.to(device, non_blocking=device.startswith('cuda'))
-            for k, v in batch.items()
-        }
-        with _autocast_ctx(device, dtype):
+        batch = move_batch(batch, device)
+        with autocast_ctx(device, dtype):
             out = model(**batch)
             loss = out.loss / accum
         if stop_on_nan and (torch.isnan(loss) or torch.isinf(loss)):
             if main:
-                append_jsonl(train_log, {
-                    'step': global_step, 'event': 'nan_loss', 'loss': float(loss),
-                })
+                append_jsonl(
+                    train_log,
+                    {
+                        'step': global_step,
+                        'event': 'nan_loss',
+                        'loss': loss_value(loss),
+                    },
+                )
                 print(f'NaN/Inf loss at step {global_step}; stopping')
             stop_flag.fill_(1)
-            if dist_info['enabled']:
-                import torch.distributed as dist
-
-                dist.all_reduce(stop_flag, op=dist.ReduceOp.MAX)
+            all_reduce_max(stop_flag)
             break
         loss.backward()
-        running_loss += float(loss.detach().float().cpu())
+        running_loss += loss_value(loss)
         micro += 1
         del batch, out
-
         if micro % accum != 0:
             continue
 
@@ -769,8 +733,7 @@ def run(
         global_step += 1
 
         if main and (global_step % log_every == 0 or global_step == 1):
-            mem = rss_gb()
-            gmem = gpu_mem_gb(device)
+            mem, gmem = rss_gb(), gpu_mem_gb(device)
             denom = log_every if global_step > 1 else 1
             row = {
                 'step': global_step,
@@ -787,19 +750,16 @@ def run(
             if verbose:
                 gtxt = f' gpu={gmem}' if gmem is not None else ''
                 print(
-                    f"step={global_step} loss={row['loss']:.4f} "
-                    f"lr={row['lr']:.2e} gn={row['grad_norm']:.3f} "
-                    f"mem={mem}{gtxt}"
+                    f'step={global_step} loss={row["loss"]:.4f} '
+                    f'lr={row["lr"]:.2e} gn={row["grad_norm"]:.3f} mem={mem}{gtxt}'
                 )
             if mem is not None and mem > mem_warn and verbose:
                 print(f'  WARN memory {mem} GB > {mem_warn}')
             running_loss = 0.0
 
-        # Eval / save only on rank 0; other ranks wait at barrier
         do_loss = global_step % eval_loss_every == 0
         do_gen = (not skip_gen_eval) and global_step % eval_gen_every == 0
         do_save = global_step % save_every == 0
-
         if do_loss or do_gen or do_save:
             barrier()
 
@@ -807,11 +767,13 @@ def run(
             losses = {'step': global_step, 'type': 'loss_eval'}
             if i_dev_loader is not None:
                 losses['I_dev_loss'] = round(
-                    eval_loss(model, i_dev_loader, device, dtype=dtype), 4,
+                    eval_loss(model, i_dev_loader, device, dtype=dtype),
+                    4,
                 )
             if e_milpac_dev_loader is not None:
                 losses['E_milpac_dev_loss'] = round(
-                    eval_loss(model, e_milpac_dev_loader, device, dtype=dtype), 4,
+                    eval_loss(model, e_milpac_dev_loader, device, dtype=dtype),
+                    4,
                 )
             append_jsonl(eval_log, losses)
             if verbose:
@@ -821,47 +783,55 @@ def run(
             gen = {'step': global_step, 'type': 'gen_eval'}
             if i_dev_pairs:
                 gen['I_dev'] = eval_generate(
-                    model, tokenizer, i_dev_pairs, device, None,
-                    max_src, max_new_tokens, num_beams, gen_batch_size=gen_bs,
+                    model,
+                    tokenizer,
+                    i_dev_pairs,
+                    device,
+                    None,
+                    max_src,
+                    max_new_tokens,
+                    num_beams,
+                    gen_batch_size=gen_bs,
                 )
             if e_milpac_dev_pairs:
                 gen['E_milpac_dev'] = eval_generate(
-                    model, tokenizer, e_milpac_dev_pairs, device, None,
-                    max_src, max_new_tokens, num_beams, gen_batch_size=gen_bs,
+                    model,
+                    tokenizer,
+                    e_milpac_dev_pairs,
+                    device,
+                    None,
+                    max_src,
+                    max_new_tokens,
+                    num_beams,
+                    gen_batch_size=gen_bs,
                 )
             if e_anu_dev_pairs:
                 gen['E_anuvaad_dev_sample'] = eval_generate(
-                    model, tokenizer, e_anu_dev_pairs, device, anu_cap,
-                    max_src, max_new_tokens, num_beams, gen_batch_size=gen_bs,
+                    model,
+                    tokenizer,
+                    e_anu_dev_pairs,
+                    device,
+                    anu_cap,
+                    max_src,
+                    max_new_tokens,
+                    num_beams,
+                    gen_batch_size=gen_bs,
                 )
-
-            weights = deep_get(cfg, 'eval', 'selection', 'stage_a_weights', default={}) or {}
-            if stage == 'B':
-                weights = deep_get(cfg, 'eval', 'selection', 'stage_b_weights', default={}) or {}
-            primary = 0.0
-            wsum = 0.0
-            for key, w in weights.items():
-                block = gen.get(key)
-                if block and 'chrfpp' in block:
-                    primary += float(w) * float(block['chrfpp']['score'])
-                    wsum += float(w)
-            if wsum > 0:
-                primary /= wsum
+            wkey = 'stage_b_weights' if stage == 'B' else 'stage_a_weights'
+            weights = deep_get(cfg, 'eval', 'selection', wkey, default={}) or {}
+            primary = _primary_chrf(gen, weights)
             gen['primary_chrfpp'] = round(primary, 4)
             append_jsonl(eval_log, gen)
             if verbose:
-                print(f"  gen_eval primary_chrfpp={gen['primary_chrfpp']}")
+                print(f'  gen_eval primary_chrfpp={gen["primary_chrfpp"]}')
                 for k in ('I_dev', 'E_milpac_dev', 'E_anuvaad_dev_sample'):
                     if k in gen and 'chrfpp' in gen[k]:
                         print(
-                            f"    {k}: BLEU={gen[k]['bleu']['score']:.2f} "
-                            f"chrF++={gen[k]['chrfpp']['score']:.2f}"
+                            f'    {k}: BLEU={gen[k]["bleu"]["score"]:.2f} '
+                            f'chrF++={gen[k]["chrfpp"]["score"]:.2f}'
                         )
-
             if primary > best_primary:
-                best_primary = primary
-                best_step = global_step
-                bad_evals = 0
+                best_primary, best_step, bad_evals = primary, global_step, 0
                 best_dir = ckpt_dir / 'best_primary'
                 _save_peft(model, best_dir, tokenizer, new_embed_start=new_embed_start)
                 if verbose:
@@ -874,17 +844,17 @@ def run(
                     stop_flag.fill_(1)
 
         if main and do_save:
-            step_dir = ckpt_dir / f'step_{global_step}'
-            _save_peft(model, step_dir, tokenizer, new_embed_start=new_embed_start)
+            _save_peft(
+                model,
+                ckpt_dir / f'step_{global_step}',
+                tokenizer,
+                new_embed_start=new_embed_start,
+            )
 
         if do_loss or do_gen or do_save:
-            if dist_info['enabled']:
-                import torch.distributed as dist
-
-                dist.all_reduce(stop_flag, op=dist.ReduceOp.MAX)
+            all_reduce_max(stop_flag)
             barrier()
 
-        # Avoid thrashing allocator on CUDA (hurts Hopper throughput)
         if device == 'mps' and global_step % 50 == 0:
             empty_device_cache(device)
 
@@ -911,16 +881,12 @@ def run(
             'backend': backend_info,
             'checkpoints': {
                 'last': str(last_dir),
-                'best_primary': (
-                    str(ckpt_dir / 'best_primary') if best_step >= 0 else None
-                ),
+                'best_primary': (str(ckpt_dir / 'best_primary') if best_step >= 0 else None),
             },
             'rss_gb': rss_gb(),
             'gpu_mem_gb': gpu_mem_gb(device),
         }
-        (run_dir / 'run_summary.json').write_text(
-            json.dumps(summary, indent=2, ensure_ascii=False), encoding='utf-8',
-        )
+        write_json(run_dir / 'run_summary.json', summary)
         if verbose:
             print(f'Done. summary={run_dir / "run_summary.json"}')
     else:
@@ -933,45 +899,49 @@ def run(
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description='LoRA fine-tune NLLB for legal EN->HI')
-    parser.add_argument('--config', default='configs/training.yaml')
-    parser.add_argument('--stage', default=None, choices=['A', 'B'])
-    parser.add_argument(
+    p = argparse.ArgumentParser(description='LoRA fine-tune NLLB for legal EN->HI')
+    p.add_argument('--config', default='configs/training.yaml')
+    p.add_argument('--stage', default=None, choices=['A', 'B'])
+    p.add_argument(
         '--curriculum',
         default=None,
         choices=['smoke', 'A1', 'A2', 'full', 'Bp'],
     )
-    parser.add_argument('--max-steps', type=int, default=None)
-    parser.add_argument('--resume-adapters', default=None)
-    parser.add_argument('--device', default=None)
-    parser.add_argument('--skip-gen-eval', action='store_true')
-    args = parser.parse_args()
+    p.add_argument('--max-steps', type=int, default=None)
+    p.add_argument('--resume-adapters', default=None)
+    p.add_argument('--device', default=None)
+    p.add_argument('--skip-gen-eval', action='store_true')
+    a = p.parse_args()
 
-    cfg_for_defaults = load_training_config(args.config)
-    stage = args.stage or deep_get(cfg_for_defaults, 'run', 'stage', default='A')
-    stage = str(stage).upper()
+    cfg = load_training_config(a.config)
+    stage = str(a.stage or deep_get(cfg, 'run', 'stage', default='A')).upper()
     if stage not in ('A', 'B'):
         raise SystemExit(f'invalid stage {stage!r}; use A or B')
-    curriculum = args.curriculum or deep_get(
-        cfg_for_defaults, 'data', 'curriculum', default=None,
-    )
+    curriculum = a.curriculum or deep_get(cfg, 'data', 'curriculum', default=None)
     if curriculum is None:
-        curriculum = 'Bp' if stage == 'B' and deep_get(
-            cfg_for_defaults, 'data', 'stage_b_replay', 'enabled', default=False,
-        ) else ('smoke' if stage == 'A' else 'full')
-    if stage == 'B' and curriculum not in ('full', 'Bp', 'B'):
-        # Stage B only uses full assignment or Bp replay mix
-        if curriculum in ('smoke', 'A1', 'A2'):
-            curriculum = 'full'
+        curriculum = (
+            'Bp'
+            if stage == 'B'
+            and deep_get(
+                cfg,
+                'data',
+                'stage_b_replay',
+                'enabled',
+                default=False,
+            )
+            else ('smoke' if stage == 'A' else 'full')
+        )
+    if stage == 'B' and curriculum in ('smoke', 'A1', 'A2'):
+        curriculum = 'full'
 
     run(
-        config_path=args.config,
+        config_path=a.config,
         stage=stage,
         curriculum=curriculum,
-        max_steps=args.max_steps,
-        resume_adapters=args.resume_adapters,
-        device=args.device,
-        skip_gen_eval=args.skip_gen_eval,
+        max_steps=a.max_steps,
+        resume_adapters=a.resume_adapters,
+        device=a.device,
+        skip_gen_eval=a.skip_gen_eval,
     )
 
 

@@ -1,17 +1,7 @@
-"""
-Track C1: train small Marian enc-dec with SPM_V2_PRIMARY (joint legal 41k).
-
-Usage:
-  PYTHONPATH=. python -m src.training.train_legal_mt --curriculum smoke --max-steps 50
-  PYTHONPATH=. python -m src.training.train_legal_mt --config configs/training_c1.yaml --curriculum A1
-  torchrun --standalone --nproc_per_node=2 -m src.training.train_legal_mt \\
-      --config configs/training_c1_h200.yaml --curriculum A1 --device cuda
-"""
+"""Track C1: train Marian enc-dec with SPM_V2_PRIMARY."""
 
 from __future__ import annotations
 
-import json
-import random
 import time
 from datetime import datetime, timezone
 from functools import partial
@@ -24,6 +14,17 @@ from transformers import get_cosine_schedule_with_warmup
 
 from src.evaluation.eval_sets import load_jsonl
 from src.evaluation.metrics_mt import score_pairs
+from src.evaluation.zero_shot_nllb import pick_device
+from src.training.common import (
+    append_jsonl,
+    autocast_ctx,
+    count_nonempty_lines,
+    is_cuda,
+    loss_value,
+    move_batch,
+    set_seed,
+    write_json,
+)
 from src.training.config import deep_get, load_training_config
 from src.training.cuda_backend import (
     build_optimizer,
@@ -34,7 +35,9 @@ from src.training.cuda_backend import (
     rss_gb,
 )
 from src.training.dist_utils import (
+    all_reduce_max,
     barrier,
+    broadcast_object,
     cleanup_distributed,
     is_main,
     setup_distributed,
@@ -44,20 +47,7 @@ from src.training.legal_mt_data import LegalMtJsonlDataset, collate_legal_mt
 from src.training.legal_mt_model import build_legal_mt_model
 from src.training.spm_tokenizer import LegalSpmTokenizer
 from src.training.subsample import build_subsample
-from src.evaluation.zero_shot_nllb import pick_device
-
-
-def set_seed(seed: int, rank: int = 0):
-    random.seed(seed + rank)
-    torch.manual_seed(seed + rank)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed + rank)
-
-
-def append_jsonl(path: Path, row: dict):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, 'a', encoding='utf-8') as f:
-        f.write(json.dumps(row, ensure_ascii=False) + '\n')
+from src.training.train_nllb_lora import _primary_chrf
 
 
 def resolve_train_path(cfg: dict, stage: str, curriculum: str) -> tuple[Path, dict | None]:
@@ -71,11 +61,10 @@ def resolve_train_path(cfg: dict, stage: str, curriculum: str) -> tuple[Path, di
         path = Path(override)
         if not path.exists():
             raise FileNotFoundError(path)
-        n = sum(1 for line in open(path, encoding='utf-8') if line.strip())
         return path, {
             'curriculum': curriculum,
             'output': str(path),
-            'n': n,
+            'n': count_nonempty_lines(path),
             'prebuilt': True,
         }
     if curriculum == 'full':
@@ -92,16 +81,10 @@ def eval_loss(model, loader, device, max_batches=50, dtype=torch.float32) -> flo
     for i, batch in enumerate(loader):
         if max_batches is not None and i >= max_batches:
             break
-        batch = {
-            k: v.to(device, non_blocking=str(device).startswith('cuda'))
-            for k, v in batch.items()
-        }
-        if str(device).startswith('cuda') and dtype in (torch.float16, torch.bfloat16):
-            with torch.autocast(device_type='cuda', dtype=dtype):
-                out = model(**batch)
-        else:
+        batch = move_batch(batch, device)
+        with autocast_ctx(device, dtype):
             out = model(**batch)
-        total += float(out.loss.detach().float().cpu())
+        total += loss_value(out.loss)
         n += 1
     model.train()
     return total / max(n, 1)
@@ -110,14 +93,14 @@ def eval_loss(model, loader, device, max_batches=50, dtype=torch.float32) -> flo
 @torch.no_grad()
 def eval_generate(
     model,
-    tokenizer: LegalSpmTokenizer,
-    pairs: list[dict],
-    device: str,
-    max_pairs: int | None,
-    max_input_length: int,
-    max_new_tokens: int,
-    num_beams: int,
-    gen_batch_size: int = 8,
+    tokenizer,
+    pairs,
+    device,
+    max_pairs,
+    max_input_length,
+    max_new_tokens,
+    num_beams,
+    gen_batch_size=8,
 ) -> dict:
     raw = unwrap_model(model)
     raw.eval()
@@ -126,21 +109,17 @@ def eval_generate(
     hyps, refs = [], []
     pad_id = tokenizer.pad_token_id
     for i in range(0, len(pairs), gen_batch_size):
-        chunk = pairs[i: i + gen_batch_size]
-        enc_ids = [
-            tokenizer.encode(p['en_text'], max_length=max_input_length)
-            for p in chunk
-        ]
+        chunk = pairs[i : i + gen_batch_size]
+        enc_ids = [tokenizer.encode(p['en_text'], max_length=max_input_length) for p in chunk]
         max_len = max(len(x) for x in enc_ids)
         input_ids = torch.tensor(
             [x + [pad_id] * (max_len - len(x)) for x in enc_ids],
             dtype=torch.long,
             device=device,
         )
-        attention_mask = (input_ids != pad_id).long()
         out = raw.generate(
             input_ids=input_ids,
-            attention_mask=attention_mask,
+            attention_mask=(input_ids != pad_id).long(),
             max_new_tokens=max_new_tokens,
             num_beams=num_beams,
             decoder_start_token_id=tokenizer.bos_token_id,
@@ -151,6 +130,12 @@ def eval_generate(
         refs.extend(p['hi_text'] for p in chunk)
     model.train()
     return score_pairs(hyps, refs)
+
+
+def _save_ckpt(model, tokenizer, path: Path):
+    path.mkdir(parents=True, exist_ok=True)
+    unwrap_model(model).save_pretrained(path)
+    tokenizer.save_pretrained(path)
 
 
 def run(
@@ -165,13 +150,10 @@ def run(
 ) -> dict:
     cfg = load_training_config(config_path)
     dist_info = setup_distributed()
-    rank = dist_info['rank']
-    world = dist_info['world_size']
+    rank, world = dist_info['rank'], dist_info['world_size']
     main = is_main()
     verbose = verbose and main
-
-    seed = int(deep_get(cfg, 'run', 'seed', default=42))
-    set_seed(seed, rank=rank)
+    set_seed(int(deep_get(cfg, 'run', 'seed', default=42)), rank=rank)
 
     if dist_info['enabled']:
         device = dist_info['device']
@@ -181,68 +163,57 @@ def run(
         device = pick_best_cuda_device() or 'cuda:0'
 
     backend_info = configure_torch_backend(device, cfg)
-    backend_info['world_size'] = world
-    backend_info['rank'] = rank
-    backend_info['ddp'] = dist_info['enabled']
+    backend_info.update(world_size=world, rank=rank, ddp=dist_info['enabled'])
 
     train_path, data_manifest = resolve_train_path(cfg, stage, curriculum)
     ts = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     tag = deep_get(cfg, 'run', 'tag', default='c1') or 'c1'
+    run_id = (
+        f'legal_mt_{stage}_{curriculum}_{tag}_ddp{world}_{ts}'
+        if dist_info['enabled']
+        else f'legal_mt_{stage}_{curriculum}_{tag}_{ts}'
+    )
     if dist_info['enabled']:
-        run_id_local = f"legal_mt_{stage}_{curriculum}_{tag}_ddp{world}_{ts}"
-    else:
-        run_id_local = f"legal_mt_{stage}_{curriculum}_{tag}_{ts}"
-    if dist_info['enabled']:
-        import torch.distributed as dist
-
-        obj = [run_id_local] if main else [None]
-        dist.broadcast_object_list(obj, src=0)
-        run_id = obj[0]
-    else:
-        run_id = run_id_local
+        run_id = broadcast_object(run_id)
 
     run_dir = Path(deep_get(cfg, 'run', 'output_root', default='data/runs')) / run_id
-    ckpt_dir = run_dir / 'checkpoints'
-    metrics_dir = run_dir / 'metrics'
+    ckpt_dir, metrics_dir = run_dir / 'checkpoints', run_dir / 'metrics'
     if main:
         for d in (run_dir, ckpt_dir, metrics_dir, run_dir / 'hyps'):
             d.mkdir(parents=True, exist_ok=True)
         (run_dir / 'config.snapshot.yaml').write_text(
-            Path(config_path).read_text(encoding='utf-8'), encoding='utf-8',
+            Path(config_path).read_text(encoding='utf-8'),
+            encoding='utf-8',
         )
         if data_manifest:
-            (run_dir / 'data_manifest.json').write_text(
-                json.dumps(data_manifest, indent=2, ensure_ascii=False), encoding='utf-8',
-            )
-        (run_dir / 'backend_info.json').write_text(
-            json.dumps(backend_info, indent=2), encoding='utf-8',
-        )
+            write_json(run_dir / 'data_manifest.json', data_manifest)
+        write_json(run_dir / 'backend_info.json', backend_info)
     barrier()
 
-    spm_path = deep_get(cfg, 'model', 'spm_path', default=None)
-    tokenizer = LegalSpmTokenizer(spm_path)
+    tokenizer = LegalSpmTokenizer(deep_get(cfg, 'model', 'spm_path', default=None))
     if resume_from:
-        model = build_legal_mt_model(tokenizer, deep_get(cfg, 'model', 'arch', default={}) or {})
-        # load weights
         state_path = Path(resume_from)
-        if (state_path / 'model.safetensors').exists() or (state_path / 'pytorch_model.bin').exists():
+        if (state_path / 'model.safetensors').exists() or (
+            state_path / 'pytorch_model.bin'
+        ).exists():
             from transformers import MarianMTModel
 
             model = MarianMTModel.from_pretrained(state_path)
         else:
             raise FileNotFoundError(f'no model weights in {state_path}')
     else:
-        model = build_legal_mt_model(tokenizer, deep_get(cfg, 'model', 'arch', default={}) or {})
+        model = build_legal_mt_model(
+            tokenizer,
+            deep_get(cfg, 'model', 'arch', default={}) or {},
+        )
 
-    if str(device).startswith('cuda') and torch.cuda.is_bf16_supported():
+    if is_cuda(device) and torch.cuda.is_bf16_supported():
         dtype = torch.bfloat16
-        model = model.to(device=device, dtype=dtype)
-    elif str(device) in ('cuda', 'mps') or str(device).startswith('cuda'):
+    elif device in ('cuda', 'mps') or is_cuda(device):
         dtype = torch.float16
-        model = model.to(device=device, dtype=dtype)
     else:
         dtype = torch.float32
-        model = model.to(device)
+    model = model.to(device=device, dtype=dtype) if dtype != torch.float32 else model.to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
     if verbose:
@@ -253,11 +224,11 @@ def run(
         print(f'params={n_params:,} dtype={dtype}')
 
     if dist_info['enabled']:
-        local_rank = dist_info['local_rank']
+        lr = dist_info['local_rank']
         model = nn.parallel.DistributedDataParallel(
             model,
-            device_ids=[local_rank],
-            output_device=local_rank,
+            device_ids=[lr],
+            output_device=lr,
             find_unused_parameters=False,
             broadcast_buffers=False,
             gradient_as_bucket_view=True,
@@ -266,21 +237,21 @@ def run(
     max_src = int(deep_get(cfg, 'data', 'max_source_length', default=256))
     max_tgt = int(deep_get(cfg, 'data', 'max_target_length', default=256))
     train_ds = LegalMtJsonlDataset(
-        train_path, tokenizer,
-        max_source_length=max_src, max_target_length=max_tgt,
+        train_path,
+        tokenizer,
+        max_source_length=max_src,
+        max_target_length=max_tgt,
     )
     if len(train_ds) == 0:
         raise RuntimeError('empty training set')
 
-    pad_id = tokenizer.pad_token_id
     pad_fixed = bool(deep_get(cfg, 'train', 'pad_to_fixed', default=False))
     pad_mult = int(deep_get(cfg, 'train', 'pad_to_multiple_of', default=1))
-    fixed = (max_src, max_tgt) if pad_fixed else None
     collate = partial(
         collate_legal_mt,
-        pad_token_id=pad_id,
+        pad_token_id=tokenizer.pad_token_id,
         pad_to_multiple_of=pad_mult,
-        pad_to_fixed=fixed,
+        pad_to_fixed=(max_src, max_tgt) if pad_fixed else None,
     )
 
     batch_size = int(deep_get(cfg, 'train', 'batch_size', default=8))
@@ -294,7 +265,11 @@ def run(
     sampler = None
     if dist_info['enabled']:
         sampler = DistributedSampler(
-            train_ds, num_replicas=world, rank=rank, shuffle=True, seed=seed,
+            train_ds,
+            num_replicas=world,
+            rank=rank,
+            shuffle=True,
+            seed=int(deep_get(cfg, 'run', 'seed', default=42)),
         )
     train_loader = DataLoader(
         train_ds,
@@ -310,13 +285,20 @@ def run(
         if not p.exists():
             return None
         ds = LegalMtJsonlDataset(
-            p, tokenizer, max_source_length=max_src, max_target_length=max_tgt,
+            p,
+            tokenizer,
+            max_source_length=max_src,
+            max_target_length=max_tgt,
             max_pairs=max_pairs,
         )
         if len(ds) == 0:
             return None
-        eval_bs = int(deep_get(cfg, 'decode', 'eval_batch_size', default=8))
-        return DataLoader(ds, batch_size=eval_bs, shuffle=False, collate_fn=collate)
+        return DataLoader(
+            ds,
+            batch_size=int(deep_get(cfg, 'decode', 'eval_batch_size', default=8)),
+            shuffle=False,
+            collate_fn=collate,
+        )
 
     i_dev_loader = make_loader(deep_get(cfg, 'eval', 'policy_I_dev')) if main else None
     e_milpac_dev_loader = (
@@ -324,7 +306,12 @@ def run(
     )
 
     lr = float(
-        deep_get(cfg, 'optim', 'lr_stage_b' if stage == 'B' else 'lr', default=3e-4)
+        deep_get(
+            cfg,
+            'optim',
+            'lr_stage_b' if stage == 'B' else 'lr',
+            default=3e-4,
+        )
     )
     weight_decay = float(deep_get(cfg, 'optim', 'weight_decay', default=0.01))
     betas = (
@@ -337,16 +324,18 @@ def run(
     accum = int(deep_get(cfg, 'train', 'grad_accum_steps', default=1))
     default_max = int(
         deep_get(
-            cfg, 'train',
+            cfg,
+            'train',
             'max_steps_stage_b' if stage == 'B' else 'max_steps_stage_a',
             default=5000,
         )
     )
     max_steps = int(max_steps if max_steps is not None else default_max)
     warmup_ratio = float(deep_get(cfg, 'optim', 'warmup_ratio', default=0.05))
-    warmup_steps = max(1, int(max_steps * warmup_ratio))
     scheduler = get_cosine_schedule_with_warmup(
-        optimizer, num_warmup_steps=warmup_steps, num_training_steps=max_steps,
+        optimizer,
+        num_warmup_steps=max(1, int(max_steps * warmup_ratio)),
+        num_training_steps=max_steps,
     )
     max_grad_norm = float(deep_get(cfg, 'optim', 'max_grad_norm', default=1.0))
     log_every = int(deep_get(cfg, 'train', 'log_every_steps', default=20))
@@ -355,7 +344,6 @@ def run(
     save_every = int(deep_get(cfg, 'train', 'save_every_steps', default=500))
     patience = int(deep_get(cfg, 'train', 'early_stop_patience_evals', default=5))
     stop_on_nan = bool(deep_get(cfg, 'monitoring', 'stop_on_nan', default=True))
-
     num_beams = int(deep_get(cfg, 'decode', 'num_beams', default=4))
     max_new_tokens = int(deep_get(cfg, 'decode', 'max_new_tokens', default=256))
     gen_bs = int(deep_get(cfg, 'decode', 'eval_batch_size', default=8))
@@ -369,22 +357,16 @@ def run(
         load_jsonl(Path(deep_get(cfg, 'eval', 'policy_E_anuvaad_dev'))) if main else []
     )
 
-    train_log = metrics_dir / 'train_log.jsonl'
-    eval_log = metrics_dir / 'eval_log.jsonl'
-
+    train_log, eval_log = metrics_dir / 'train_log.jsonl', metrics_dir / 'eval_log.jsonl'
     model.train()
-    global_step = 0
-    micro = 0
+    global_step = micro = 0
     running_loss = 0.0
-    best_primary = -1e9
-    best_step = -1
-    bad_evals = 0
-    t0 = time.time()
-    epoch = 0
+    best_primary, best_step, bad_evals = -1e9, -1, 0
+    t0, epoch = time.time(), 0
     if sampler is not None:
         sampler.set_epoch(epoch)
     data_iter = iter(train_loader)
-    stop_flag = torch.zeros(1, device=device if str(device).startswith('cuda') else 'cpu')
+    stop_flag = torch.zeros(1, device=device if is_cuda(device) else 'cpu')
 
     if verbose:
         print(
@@ -404,33 +386,20 @@ def run(
             data_iter = iter(train_loader)
             batch = next(data_iter)
 
-        batch = {
-            k: v.to(device, non_blocking=str(device).startswith('cuda'))
-            for k, v in batch.items()
-        }
-        if str(device).startswith('cuda') and dtype in (torch.float16, torch.bfloat16):
-            with torch.autocast(device_type='cuda', dtype=dtype):
-                out = model(**batch)
-                loss = out.loss / accum
-        else:
+        batch = move_batch(batch, device)
+        with autocast_ctx(device, dtype):
             out = model(**batch)
             loss = out.loss / accum
-
         if stop_on_nan and (torch.isnan(loss) or torch.isinf(loss)):
             if main:
                 print(f'NaN/Inf at step {global_step}; stop')
             stop_flag.fill_(1)
-            if dist_info['enabled']:
-                import torch.distributed as dist
-
-                dist.all_reduce(stop_flag, op=dist.ReduceOp.MAX)
+            all_reduce_max(stop_flag)
             break
-
         loss.backward()
-        running_loss += float(loss.detach().float().cpu())
+        running_loss += loss_value(loss)
         micro += 1
         del batch, out
-
         if micro % accum != 0:
             continue
 
@@ -454,8 +423,8 @@ def run(
             append_jsonl(train_log, row)
             if verbose:
                 print(
-                    f"step={global_step} loss={row['loss']:.4f} "
-                    f"lr={row['lr']:.2e} gn={row['grad_norm']:.3f}"
+                    f'step={global_step} loss={row["loss"]:.4f} '
+                    f'lr={row["lr"]:.2e} gn={row["grad_norm"]:.3f}'
                 )
             running_loss = 0.0
 
@@ -469,11 +438,13 @@ def run(
             losses = {'step': global_step, 'type': 'loss_eval'}
             if i_dev_loader is not None:
                 losses['I_dev_loss'] = round(
-                    eval_loss(model, i_dev_loader, device, dtype=dtype), 4,
+                    eval_loss(model, i_dev_loader, device, dtype=dtype),
+                    4,
                 )
             if e_milpac_dev_loader is not None:
                 losses['E_milpac_dev_loss'] = round(
-                    eval_loss(model, e_milpac_dev_loader, device, dtype=dtype), 4,
+                    eval_loss(model, e_milpac_dev_loader, device, dtype=dtype),
+                    4,
                 )
             append_jsonl(eval_log, losses)
             if verbose:
@@ -483,47 +454,57 @@ def run(
             gen = {'step': global_step, 'type': 'gen_eval'}
             if i_dev_pairs:
                 gen['I_dev'] = eval_generate(
-                    model, tokenizer, i_dev_pairs, device, None,
-                    max_src, max_new_tokens, num_beams, gen_bs,
+                    model,
+                    tokenizer,
+                    i_dev_pairs,
+                    device,
+                    None,
+                    max_src,
+                    max_new_tokens,
+                    num_beams,
+                    gen_bs,
                 )
             if e_milpac_dev_pairs:
                 gen['E_milpac_dev'] = eval_generate(
-                    model, tokenizer, e_milpac_dev_pairs, device, None,
-                    max_src, max_new_tokens, num_beams, gen_bs,
+                    model,
+                    tokenizer,
+                    e_milpac_dev_pairs,
+                    device,
+                    None,
+                    max_src,
+                    max_new_tokens,
+                    num_beams,
+                    gen_bs,
                 )
             if e_anu_dev_pairs:
                 gen['E_anuvaad_dev_sample'] = eval_generate(
-                    model, tokenizer, e_anu_dev_pairs, device, anu_cap,
-                    max_src, max_new_tokens, num_beams, gen_bs,
+                    model,
+                    tokenizer,
+                    e_anu_dev_pairs,
+                    device,
+                    anu_cap,
+                    max_src,
+                    max_new_tokens,
+                    num_beams,
+                    gen_bs,
                 )
-            weights = deep_get(cfg, 'eval', 'selection', 'stage_a_weights', default={}) or {}
-            if stage == 'B':
-                weights = deep_get(cfg, 'eval', 'selection', 'stage_b_weights', default={}) or {}
-            primary, wsum = 0.0, 0.0
-            for key, w in weights.items():
-                block = gen.get(key)
-                if block and 'chrfpp' in block:
-                    primary += float(w) * float(block['chrfpp']['score'])
-                    wsum += float(w)
-            if wsum > 0:
-                primary /= wsum
+            wkey = 'stage_b_weights' if stage == 'B' else 'stage_a_weights'
+            weights = deep_get(cfg, 'eval', 'selection', wkey, default={}) or {}
+            primary = _primary_chrf(gen, weights)
             gen['primary_chrfpp'] = round(primary, 4)
             append_jsonl(eval_log, gen)
             if verbose:
-                print(f"  gen_eval primary_chrfpp={gen['primary_chrfpp']}")
+                print(f'  gen_eval primary_chrfpp={gen["primary_chrfpp"]}')
                 for k in ('I_dev', 'E_milpac_dev', 'E_anuvaad_dev_sample'):
                     if k in gen and 'chrfpp' in gen[k]:
                         print(
-                            f"    {k}: BLEU={gen[k]['bleu']['score']:.2f} "
-                            f"chrF++={gen[k]['chrfpp']['score']:.2f}"
+                            f'    {k}: BLEU={gen[k]["bleu"]["score"]:.2f} '
+                            f'chrF++={gen[k]["chrfpp"]["score"]:.2f}'
                         )
             if primary > best_primary:
-                best_primary = primary
-                best_step = global_step
-                bad_evals = 0
+                best_primary, best_step, bad_evals = primary, global_step, 0
                 best_dir = ckpt_dir / 'best_primary'
-                unwrap_model(model).save_pretrained(best_dir)
-                tokenizer.save_pretrained(best_dir)
+                _save_ckpt(model, tokenizer, best_dir)
                 if verbose:
                     print(f'  new best primary={best_primary:.4f} -> {best_dir}')
             else:
@@ -534,22 +515,16 @@ def run(
                     stop_flag.fill_(1)
 
         if main and do_save:
-            step_dir = ckpt_dir / f'step_{global_step}'
-            unwrap_model(model).save_pretrained(step_dir)
-            tokenizer.save_pretrained(step_dir)
+            _save_ckpt(model, tokenizer, ckpt_dir / f'step_{global_step}')
 
         if do_loss or do_gen or do_save:
-            if dist_info['enabled']:
-                import torch.distributed as dist
-
-                dist.all_reduce(stop_flag, op=dist.ReduceOp.MAX)
+            all_reduce_max(stop_flag)
             barrier()
 
     barrier()
     if main:
         last_dir = ckpt_dir / 'last'
-        unwrap_model(model).save_pretrained(last_dir)
-        tokenizer.save_pretrained(last_dir)
+        _save_ckpt(model, tokenizer, last_dir)
         summary = {
             'run_id': run_id,
             'track': 'C1',
@@ -568,14 +543,10 @@ def run(
             'elapsed_s': round(time.time() - t0, 1),
             'checkpoints': {
                 'last': str(last_dir),
-                'best_primary': (
-                    str(ckpt_dir / 'best_primary') if best_step >= 0 else None
-                ),
+                'best_primary': (str(ckpt_dir / 'best_primary') if best_step >= 0 else None),
             },
         }
-        (run_dir / 'run_summary.json').write_text(
-            json.dumps(summary, indent=2, ensure_ascii=False), encoding='utf-8',
-        )
+        write_json(run_dir / 'run_summary.json', summary)
         if verbose:
             print(f'Done. summary={run_dir / "run_summary.json"}')
     else:
@@ -588,25 +559,23 @@ def run(
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description='Track C1: train legal MT with custom SPM')
-    parser.add_argument('--config', default='configs/training_c1.yaml')
-    parser.add_argument('--stage', default='A', choices=['A', 'B'])
-    parser.add_argument(
-        '--curriculum', default='smoke', choices=['smoke', 'A1', 'A2', 'full'],
-    )
-    parser.add_argument('--max-steps', type=int, default=None)
-    parser.add_argument('--resume-from', default=None, help='HF model dir to continue')
-    parser.add_argument('--device', default=None)
-    parser.add_argument('--skip-gen-eval', action='store_true')
-    args = parser.parse_args()
+    p = argparse.ArgumentParser(description='Track C1: train legal MT with custom SPM')
+    p.add_argument('--config', default='configs/training_c1.yaml')
+    p.add_argument('--stage', default='A', choices=['A', 'B'])
+    p.add_argument('--curriculum', default='smoke', choices=['smoke', 'A1', 'A2', 'full'])
+    p.add_argument('--max-steps', type=int, default=None)
+    p.add_argument('--resume-from', default=None)
+    p.add_argument('--device', default=None)
+    p.add_argument('--skip-gen-eval', action='store_true')
+    a = p.parse_args()
     run(
-        config_path=args.config,
-        stage=args.stage,
-        curriculum=args.curriculum if args.stage == 'A' else 'full',
-        max_steps=args.max_steps,
-        resume_from=args.resume_from,
-        device=args.device,
-        skip_gen_eval=args.skip_gen_eval,
+        config_path=a.config,
+        stage=a.stage,
+        curriculum=a.curriculum if a.stage == 'A' else 'full',
+        max_steps=a.max_steps,
+        resume_from=a.resume_from,
+        device=a.device,
+        skip_gen_eval=a.skip_gen_eval,
     )
 
 

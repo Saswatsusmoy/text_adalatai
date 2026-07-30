@@ -1,7 +1,9 @@
-"""HuggingFace-friendly wrapper around Track C SPM_V2_PRIMARY (joint Unigram 41k)."""
+"""HF-friendly wrapper around Track C SPM_V2_PRIMARY (joint Unigram 41k)."""
 
 from __future__ import annotations
 
+import json
+import shutil
 from pathlib import Path
 
 import sentencepiece as spm
@@ -11,12 +13,6 @@ from src.config import SPM_V2_PRIMARY
 
 
 class LegalSpmTokenizer:
-    """
-    Shared EN/HI SentencePiece (joint legal Unigram).
-
-    pad=0, unk=1, bos=<s>=2, eos=</s>=3 (SPM defaults for this freeze).
-    """
-
     def __init__(self, model_path: str | Path | None = None):
         path = Path(model_path) if model_path else SPM_V2_PRIMARY
         if not path.exists():
@@ -47,7 +43,6 @@ class LegalSpmTokenizer:
         if add_eos:
             ids = ids + [self.eos_token_id]
         if max_length is not None and truncation and len(ids) > max_length:
-            # keep eos if present
             if add_eos and max_length >= 1:
                 ids = ids[: max_length - 1] + [self.eos_token_id]
             else:
@@ -55,8 +50,8 @@ class LegalSpmTokenizer:
         return ids
 
     def decode(self, ids: list[int], skip_special_tokens: bool = True) -> str:
-        special = {self.pad_token_id, self.bos_token_id, self.eos_token_id}
         if skip_special_tokens:
+            special = {self.pad_token_id, self.bos_token_id, self.eos_token_id}
             ids = [i for i in ids if i not in special]
         return self.sp.decode(ids)
 
@@ -72,10 +67,6 @@ class LegalSpmTokenizer:
     def save_pretrained(self, path: str | Path):
         path = Path(path)
         path.mkdir(parents=True, exist_ok=True)
-        # SPM model is binary; copy path reference + meta
-        import json
-        import shutil
-
         dest = path / 'spiece.model'
         if not dest.exists() or dest.resolve() != self.model_path.resolve():
             shutil.copy2(self.model_path, dest)
@@ -88,15 +79,10 @@ class LegalSpmTokenizer:
             'eos_token_id': self.eos_token_id,
             'source': str(self.model_path),
         }
-        (path / 'tokenizer_meta.json').write_text(
-            json.dumps(meta, indent=2), encoding='utf-8',
-        )
+        (path / 'tokenizer_meta.json').write_text(json.dumps(meta, indent=2), encoding='utf-8')
 
     @classmethod
     def from_pretrained(cls, path: str | Path) -> LegalSpmTokenizer:
         path = Path(path)
         model = path / 'spiece.model'
-        if model.exists():
-            return cls(model)
-        # allow pointing at the freeze path directly
-        return cls(path)
+        return cls(model if model.exists() else path)

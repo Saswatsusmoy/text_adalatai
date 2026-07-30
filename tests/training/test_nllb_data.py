@@ -21,7 +21,9 @@ def test_collate_pad_to_fixed_masks_loss():
         {'input_ids': [1, 2], 'attention_mask': [1, 1], 'labels': [9]},
     ]
     batch = collate_nllb(
-        feats, pad_token_id=0, pad_to_fixed=(4, 4),
+        feats,
+        pad_token_id=0,
+        pad_to_fixed=(4, 4),
     )
     assert batch['input_ids'].shape == (1, 4)
     assert batch['labels'].shape == (1, 4)

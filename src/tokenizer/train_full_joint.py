@@ -20,6 +20,7 @@ from pathlib import Path
 from src.tokenizer.prepare_spm_corpus import dedupe_text_file, run as prepare_corpus
 from src.tokenizer.train import MODEL_DIR, TRAIN_PROFILES
 
+
 CORPUS_DIR = Path('data/external')
 BASE_JOINT = CORPUS_DIR / 'spm_corpus_legal_v2_joint.txt'
 DEFAULT_VOCAB = 41000
@@ -154,7 +155,7 @@ def run(
     if verbose:
         print(f'\nReport: {out_report}')
         if report['winner']:
-            print(f"Winner: {report['winner']}")
+            print(f'Winner: {report["winner"]}')
         else:
             print('No full-joint model trained; keep sample joint_41000')
     return report

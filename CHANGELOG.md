@@ -4,6 +4,24 @@
 
 ### Added
 
+- **Ruff lint/format tooling:**
+  - `pyproject.toml` -- ruff lint + format (line-length 100, single quotes, py310,
+    first-party `src`), pytest config.
+  - `requirements-dev.txt`, `.pre-commit-config.yaml` (ruff + ruff-format).
+  - Makefile: `install-dev`, `lint`, `format`, `format-check`, `check`.
+  - Applied format/autofix across `src/`, `tests/`, `run_pipeline.py`; fixed remaining
+    E741/F841/E722/B007/B011 issues so `make lint` is clean.
+
+### Changed
+
+- **Training/eval LOC + efficiency pass (no feature loss):**
+  - Shared helpers in `src/training/common.py` (seed, jsonl, autocast, batch H2D, loss.item).
+  - DDP: `broadcast_object` / `all_reduce_max` helpers; denser `train_nllb_lora` / `train_legal_mt`.
+  - Collate pads into preallocated tensors; NLLB dataset sets src/tgt lang once.
+  - Stripped filler docs/comments; train+eval packages ~3954 -> ~3300 LOC.
+
+### Added
+
 - **Submission package:**
   - `REPORT.md` -- assignment-facing write-up (tokenizer, data, NLLB LoRA, BLEU/chrF++ tables,
     qualitative ZS vs A2 panel, reflection, codebase map).

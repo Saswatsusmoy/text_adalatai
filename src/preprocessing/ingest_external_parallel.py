@@ -21,6 +21,7 @@ import pandas as pd
 
 from src.preprocessing.align_sentences import MAX_CHAR_RATIO, MIN_CHAR_RATIO
 
+
 RAW_DIR = Path('data/external/raw')
 MILPAC_DIR = RAW_DIR / 'milpac'
 ANUVAAD_DIR = RAW_DIR / 'anuvaad'
@@ -30,31 +31,27 @@ MIN_TEXT_LEN = 3
 
 MILPAC_URLS = {
     'MILPaC_IP_dataset.xlsx': (
-        'https://raw.githubusercontent.com/Law-AI/MILPaC/main/Data/MILPaC/'
-        'MILPaC_IP_dataset.xlsx'
+        'https://raw.githubusercontent.com/Law-AI/MILPaC/main/Data/MILPaC/MILPaC_IP_dataset.xlsx'
     ),
     'MILPaC_CCI_FAQ_dataset.xlsx': (
         'https://raw.githubusercontent.com/Law-AI/MILPaC/main/Data/MILPaC/'
         'MILPaC_CCI_FAQ_dataset.xlsx'
     ),
     'MILPaC_Acts_dataset.xlsx': (
-        'https://raw.githubusercontent.com/Law-AI/MILPaC/main/Data/MILPaC/'
-        'MILPaC_Acts_dataset.xlsx'
+        'https://raw.githubusercontent.com/Law-AI/MILPaC/main/Data/MILPaC/MILPaC_Acts_dataset.xlsx'
     ),
 }
 
 ANUVAAD_URLS = {
     'ik-2021-v1-en-hi.zip': (
-        'https://anuvaad-parallel-corpus.s3-us-west-2.amazonaws.com/'
-        'ik-2021-v1-en-hi.zip'
+        'https://anuvaad-parallel-corpus.s3-us-west-2.amazonaws.com/ik-2021-v1-en-hi.zip'
     ),
     'internal-judicial-2021-v1-en-hi.zip': (
         'https://anuvaad-parallel-corpus.s3-us-west-2.amazonaws.com/'
         'internal-judicial-2021-v1-en-hi.zip'
     ),
     'legal-terms-2021-v1-en-hi.zip': (
-        'https://anuvaad-parallel-corpus.s3-us-west-2.amazonaws.com/'
-        'legal-terms-2021-v1-en-hi.zip'
+        'https://anuvaad-parallel-corpus.s3-us-west-2.amazonaws.com/legal-terms-2021-v1-en-hi.zip'
     ),
 }
 

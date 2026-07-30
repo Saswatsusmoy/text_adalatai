@@ -1,4 +1,4 @@
-.PHONY: install venv reextract join segment align output preprocess \
+.PHONY: install install-dev venv reextract join segment align output preprocess \
 	external-download external-ingest external-eval-split \
 	tokenizer-prepare tokenizer-train-16k tokenizer-train-32k tokenizer-train-41k \
 	tokenizer-train-all tokenizer-train tokenizer-bench \
@@ -10,12 +10,17 @@
 	train-nllb-A2-dora-h200 \
 	train-c1-smoke train-c1-A1-h200 eval-c1 \
 	c1c-vocab-extend train-c1c-A1-h200 \
+	lint format format-check check \
 	test test-all clean clean-data all
 
 # --- Setup ---
 
 install:
 	pip install -r requirements.txt
+	python3 -m spacy download en_core_web_sm
+
+install-dev:
+	pip install -r requirements-dev.txt
 	python3 -m spacy download en_core_web_sm
 
 venv:
@@ -175,18 +180,37 @@ train-c1c-A1-h200:
 		-m src.training.train_nllb_lora \
 		--config configs/training_c1c_h200.yaml --curriculum A1 --device cuda
 
+# --- Lint / format (ruff; see pyproject.toml) ---
+
+PYTHON ?= $(shell if [ -x .venv/bin/python ]; then echo .venv/bin/python; else echo python3; fi)
+RUFF = $(PYTHON) -m ruff
+PYTEST = $(PYTHON) -m pytest
+
+lint:
+	$(RUFF) check src tests run_pipeline.py
+
+format:
+	$(RUFF) format src tests run_pipeline.py
+	$(RUFF) check --fix src tests run_pipeline.py
+
+format-check:
+	$(RUFF) format --check src tests run_pipeline.py
+	$(RUFF) check src tests run_pipeline.py
+
+check: format-check test
+
 # --- Tests ---
 
 test:
-	PYTHONPATH=. python3 -m pytest tests/ -v -k "not scan_all"
+	PYTHONPATH=. $(PYTEST) tests/ -v -k "not scan_all"
 
 test-all:
-	PYTHONPATH=. python3 -m pytest tests/ -v
+	PYTHONPATH=. $(PYTEST) tests/ -v
 
 # --- Cleanup ---
 
 clean:
-	rm -rf __pycache__ .pytest_cache
+	rm -rf __pycache__ .pytest_cache .ruff_cache
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
 clean-data:

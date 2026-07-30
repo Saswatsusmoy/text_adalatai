@@ -1,4 +1,4 @@
-from src.config import DEVANAGARI_START, DEVANAGARI_END
+from src.config import DEVANAGARI_END, DEVANAGARI_START
 
 
 def count_devanagari(text: str) -> int:
@@ -13,6 +13,5 @@ def devanagari_ratio(text: str) -> float:
     if not text:
         return 0.0
     dev_count = count_devanagari(text)
-    non_space = len(text) - text.count(" ")
+    non_space = len(text) - text.count(' ')
     return dev_count / non_space if non_space > 0 else 0.0
-

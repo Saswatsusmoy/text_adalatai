@@ -17,6 +17,7 @@ import json
 import random
 from pathlib import Path
 
+
 PARALLEL_DIR = Path('data/external/parallel')
 STAGE_A_ALL = PARALLEL_DIR / 'stage_a_en_hi.jsonl'
 STAGE_A_TRAIN = PARALLEL_DIR / 'stage_a_train.jsonl'
@@ -84,8 +85,8 @@ def split_fraction(
             if n_test + n_dev >= n:
                 return order, [], []
     test = order[:n_test]
-    dev = order[n_test:n_test + n_dev]
-    train = order[n_test + n_dev:]
+    dev = order[n_test : n_test + n_dev]
+    train = order[n_test + n_dev :]
     return train, dev, test
 
 
@@ -103,8 +104,8 @@ def split_fixed_n(
     test_n = min(test_n, max(0, n // 2))
     dev_n = min(dev_n, max(0, (n - test_n) // 5))
     test = order[:test_n]
-    dev = order[test_n:test_n + dev_n]
-    train = order[test_n + dev_n:]
+    dev = order[test_n : test_n + dev_n]
+    train = order[test_n + dev_n :]
     return train, dev, test
 
 
@@ -134,15 +135,22 @@ def run(
     milpac = [p for p in all_pairs if is_milpac(p.get('source', ''))]
     anuvaad = [p for p in all_pairs if is_anuvaad(p.get('source', ''))]
     other = [
-        p for p in all_pairs
+        p
+        for p in all_pairs
         if not is_milpac(p.get('source', '')) and not is_anuvaad(p.get('source', ''))
     ]
 
     m_train, m_dev, m_test = split_fraction(
-        milpac, milpac_dev_frac, milpac_test_frac, rng,
+        milpac,
+        milpac_dev_frac,
+        milpac_test_frac,
+        rng,
     )
     a_train, a_dev, a_test = split_fixed_n(
-        anuvaad, anuvaad_dev_n, anuvaad_test_n, rng,
+        anuvaad,
+        anuvaad_dev_n,
+        anuvaad_test_n,
+        rng,
     )
 
     train = m_train + a_train + other
@@ -220,7 +228,9 @@ def run(
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description='Split external Stage A into train + Policy E eval')
+    parser = argparse.ArgumentParser(
+        description='Split external Stage A into train + Policy E eval'
+    )
     parser.add_argument('--seed', type=int, default=SEED)
     parser.add_argument('--anuvaad-test-n', type=int, default=ANUVAAD_TEST_N)
     parser.add_argument('--anuvaad-dev-n', type=int, default=ANUVAAD_DEV_N)

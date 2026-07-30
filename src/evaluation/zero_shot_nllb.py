@@ -1,19 +1,5 @@
-"""
-Track D zero-shot: NLLB-200 distilled 600M EN->HI (MPS local or CUDA/H200).
+"""NLLB EN->HI decode + dual-policy scores (zero-shot or PEFT adapters)."""
 
-Scores dual eval policies:
-  I_test, E_milpac_test, E_anuvaad_test (optional E_external_test / I_dev)
-
-Usage:
-  PYTHONPATH=. python3 -m src.evaluation.zero_shot_nllb
-  PYTHONPATH=. python3 -m src.evaluation.zero_shot_nllb --suites I_test,E_milpac_test
-  PYTHONPATH=. python3 -m src.evaluation.zero_shot_nllb --max-pairs 20  # smoke
-  PYTHONPATH=. python3 -m src.evaluation.zero_shot_nllb --score-only  # metrics from hyps
-  # H200 (large batch):
-  PYTHONPATH=. python3 -m src.evaluation.zero_shot_nllb --device cuda --batch-size 32 --no-resume
-"""
-
-import gc
 import json
 import time
 from pathlib import Path
@@ -23,6 +9,8 @@ from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
 from src.evaluation.eval_sets import load_jsonl, scoring_suites
 from src.evaluation.metrics_mt import score_pairs
+from src.training.common import empty_device_cache, is_cuda
+
 
 DEFAULT_MODEL = 'facebook/nllb-200-distilled-600M'
 SRC_LANG = 'eng_Latn'
@@ -45,21 +33,24 @@ def load_model(
     adapters: str | Path | None = None,
 ):
     device = device or pick_device()
-    tok_src = adapters if adapters else model_id
-    tokenizer = AutoTokenizer.from_pretrained(tok_src)
+    tokenizer = AutoTokenizer.from_pretrained(adapters if adapters else model_id)
     if hasattr(tokenizer, 'src_lang'):
         tokenizer.src_lang = SRC_LANG
-    if device.startswith('cuda') and torch.cuda.is_bf16_supported():
+
+    if is_cuda(device) and torch.cuda.is_bf16_supported():
         dtype = torch.bfloat16
-    elif device in ('mps', 'cuda') or device.startswith('cuda'):
+    elif device in ('mps', 'cuda') or is_cuda(device):
         dtype = torch.float16
     else:
         dtype = torch.float32
+
     load_kw = {'dtype': dtype}
-    if device.startswith('cuda'):
+    if is_cuda(device):
         try:
             base = AutoModelForSeq2SeqLM.from_pretrained(
-                model_id, attn_implementation='sdpa', **load_kw,
+                model_id,
+                attn_implementation='sdpa',
+                **load_kw,
             )
         except (TypeError, ValueError, OSError):
             base = AutoModelForSeq2SeqLM.from_pretrained(model_id, **load_kw)
@@ -69,14 +60,14 @@ def load_model(
     if adapters:
         from peft import PeftModel
 
-        model = PeftModel.from_pretrained(base, str(adapters))
-        # C1c v2: trained emb rows live outside PEFT adapter when modules_to_save=null
         from src.training.train_nllb_lora import apply_new_embed_rows
 
+        model = PeftModel.from_pretrained(base, str(adapters))
         if apply_new_embed_rows(model, adapters):
             print(f'Applied new_embed_rows from {adapters}')
     else:
         model = base
+
     model.to(device)
     model.eval()
     if getattr(model, 'generation_config', None) is not None:
@@ -104,7 +95,6 @@ def translate_batch(
 ) -> list[str]:
     if not texts:
         return []
-    forced_bos = _forced_bos_id(tokenizer)
     enc = tokenizer(
         texts,
         return_tensors='pt',
@@ -112,24 +102,19 @@ def translate_batch(
         truncation=True,
         max_length=max_input_length,
     )
-    non_blocking = device.startswith('cuda')
-    enc = {k: v.to(device, non_blocking=non_blocking) for k, v in enc.items()}
+    enc = {k: v.to(device, non_blocking=is_cuda(device)) for k, v in enc.items()}
+    gen_kw = dict(
+        forced_bos_token_id=_forced_bos_id(tokenizer),
+        max_new_tokens=max_new_tokens,
+        num_beams=num_beams,
+    )
     with torch.no_grad():
-        if device.startswith('cuda'):
-            with torch.autocast(device_type='cuda', dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16):
-                out = model.generate(
-                    **enc,
-                    forced_bos_token_id=forced_bos,
-                    max_new_tokens=max_new_tokens,
-                    num_beams=num_beams,
-                )
+        if is_cuda(device):
+            dt = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+            with torch.autocast(device_type='cuda', dtype=dt):
+                out = model.generate(**enc, **gen_kw)
         else:
-            out = model.generate(
-                **enc,
-                forced_bos_token_id=forced_bos,
-                max_new_tokens=max_new_tokens,
-                num_beams=num_beams,
-            )
+            out = model.generate(**enc, **gen_kw)
     hyps = tokenizer.batch_decode(out, skip_special_tokens=True)
     del enc, out
     if device == 'mps' and hasattr(torch, 'mps'):
@@ -161,32 +146,26 @@ def translate_pairs(
 ) -> list[dict]:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     path = hyp_path_for(suite_name, tag=tag)
-    done_keys: set[tuple[str, str]] = set()
     results: list[dict] = []
+    done_keys: set[tuple[str, str]] = set()
 
     if resume and path.exists():
         results = load_existing_hyps(path)
-        for r in results:
-            done_keys.add((r.get('en_text', ''), r.get('hi_text', '')))
+        done_keys = {(r.get('en_text', ''), r.get('hi_text', '')) for r in results}
         if verbose and results:
             print(f'  resume: {len(results)} hyps already in {path}')
 
-    pending = [
-        p for p in pairs
-        if (p.get('en_text', ''), p.get('hi_text', '')) not in done_keys
-    ]
+    pending = [p for p in pairs if (p.get('en_text', ''), p.get('hi_text', '')) not in done_keys]
     if not pending:
         return results
 
-    mode = 'a' if results else 'w'
     t0 = time.time()
-    with open(path, mode, encoding='utf-8') as f:
+    with open(path, 'a' if results else 'w', encoding='utf-8') as f:
         n_pending = len(pending)
         for start in range(0, n_pending, batch_size):
-            chunk = pending[start:start + batch_size]
-            srcs = [p['en_text'] for p in chunk]
+            chunk = pending[start : start + batch_size]
             hyps = translate_batch(
-                srcs,
+                [p['en_text'] for p in chunk],
                 tokenizer,
                 model,
                 device,
@@ -205,16 +184,12 @@ def translate_pairs(
                 results.append(row)
                 f.write(json.dumps(row, ensure_ascii=False) + '\n')
             f.flush()
-            if (start // batch_size) % 10 == 0:
-                gc.collect()
-                if device == 'mps':
-                    torch.mps.empty_cache()
-            if verbose and (
-                (start // batch_size) % 25 == 0 or start + batch_size >= n_pending
-            ):
+            bi = start // batch_size
+            if bi % 10 == 0:
+                empty_device_cache(device)
+            if verbose and (bi % 25 == 0 or start + batch_size >= n_pending):
                 done = min(start + batch_size, n_pending)
-                elapsed = time.time() - t0
-                rate = done / max(elapsed, 1e-6)
+                rate = done / max(time.time() - t0, 1e-6)
                 print(
                     f'  translated +{done}/{n_pending} this run '
                     f'(total hyps {len(results)}, {rate:.2f} pairs/s)'
@@ -236,9 +211,7 @@ def score_hyp_file(
             'error': f'missing_hyps:{path}',
             'hypotheses': str(path),
         }
-    hyps = [r['hyp_hi'] for r in rows]
-    refs = [r['hi_text'] for r in rows]
-    scores = score_pairs(hyps, refs)
+    scores = score_pairs([r['hyp_hi'] for r in rows], [r['hi_text'] for r in rows])
     return {
         'suite': suite_name,
         'path': str(path),
@@ -291,11 +264,8 @@ def evaluate_suite(
         verbose=verbose,
         tag=tag,
     )
-    # Score only the requested pair order (re-align by keys)
     key_to_hyp = {(r['en_text'], r['hi_text']): r['hyp_hi'] for r in rows}
-    hyps = []
-    refs = []
-    missing = 0
+    hyps, refs, missing = [], [], 0
     for p in pairs:
         k = (p['en_text'], p['hi_text'])
         if k not in key_to_hyp:
@@ -315,8 +285,8 @@ def evaluate_suite(
     }
     if verbose:
         print(
-            f"  BLEU={scores['bleu']['score']:.2f}  "
-            f"chrF++={scores['chrfpp']['score']:.2f}  n={scores['n']}"
+            f'  BLEU={scores["bleu"]["score"]:.2f}  '
+            f'chrF++={scores["chrfpp"]["score"]:.2f}  n={scores["n"]}'
         )
     return out
 
@@ -327,13 +297,12 @@ def write_report(report: dict, verbose: bool = True) -> Path:
     out_path = OUT_DIR / f'{tag}_report.json'
     out_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding='utf-8')
     if verbose:
-        print(f'\nReport: {out_path}')
-        print('\nSummary:')
+        print(f'\nReport: {out_path}\nSummary:')
         for r in report.get('suites', []):
             if 'bleu' in r:
                 print(
-                    f"  {r['suite']:<18} n={r['n']:<5} "
-                    f"BLEU={r['bleu']['score']:.2f}  chrF++={r['chrfpp']['score']:.2f}"
+                    f'  {r["suite"]:<18} n={r["n"]:<5} '
+                    f'BLEU={r["bleu"]["score"]:.2f}  chrF++={r["chrfpp"]["score"]:.2f}'
                 )
     return out_path
 
@@ -358,18 +327,16 @@ def run(
     unknown = [s for s in suites if s not in available]
     if unknown:
         raise ValueError(f'unknown suites {unknown}; choose from {list(available)}')
-
     if tag is None:
         tag = 'nllb_lora' if adapters else 'zero_shot_nllb'
 
     if score_only:
-        results = [score_hyp_file(name, tag=tag) for name in suites]
         report = {
             'model_id': model_id,
             'adapters': adapters,
             'tag': tag,
             'mode': 'score_only',
-            'suites': results,
+            'suites': [score_hyp_file(n, tag=tag) for n in suites],
         }
         write_report(report, verbose=verbose)
         return report
@@ -379,21 +346,16 @@ def run(
         print(f'Model: {model_id}')
         if adapters:
             print(f'Adapters: {adapters}')
-        print(f'Tag: {tag}')
-        print(f'Device: {device}')
-        print(f'Suites: {suites}')
+        print(f'Tag: {tag}\nDevice: {device}\nSuites: {suites}')
         if max_pairs:
             print(f'max_pairs per suite: {max_pairs}')
 
     t_load = time.time()
-    tokenizer, model, device = load_model(
-        model_id, device=device, adapters=adapters,
-    )
+    tokenizer, model, device = load_model(model_id, device=device, adapters=adapters)
     if verbose:
         print(f'Loaded in {time.time() - t_load:.1f}s')
 
-    results = []
-    t0 = time.time()
+    results, t0 = [], time.time()
     for name in suites:
         results.append(
             evaluate_suite(
@@ -412,11 +374,7 @@ def run(
                 tag=tag,
             )
         )
-        gc.collect()
-        if device == 'mps' and hasattr(torch, 'mps'):
-            torch.mps.empty_cache()
-        elif device.startswith('cuda') and torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        empty_device_cache(device)
 
     report = {
         'model_id': model_id,
@@ -440,49 +398,33 @@ def run(
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description='NLLB zero-shot EN->HI on dual eval policies')
-    parser.add_argument('--model', default=DEFAULT_MODEL)
-    parser.add_argument(
-        '--suites',
-        default=','.join(DEFAULT_SUITES),
-        help='Comma-separated suite names from eval_sets.scoring_suites()',
-    )
-    parser.add_argument('--max-pairs', type=int, default=None, help='Cap pairs per suite (smoke)')
-    parser.add_argument('--batch-size', type=int, default=1)
-    parser.add_argument('--max-input-length', type=int, default=256)
-    parser.add_argument('--max-new-tokens', type=int, default=256)
-    parser.add_argument('--num-beams', type=int, default=4)
-    parser.add_argument('--device', default=None, help='mps | cpu | cuda (default: auto)')
-    parser.add_argument(
-        '--adapters',
-        default=None,
-        help='PEFT adapter dir (LoRA). Omit for generic base / zero-shot.',
-    )
-    parser.add_argument(
-        '--tag',
-        default=None,
-        help='Output prefix for hyps/report (default zero_shot_nllb or nllb_lora)',
-    )
-    parser.add_argument(
-        '--score-only',
-        action='store_true',
-        help='Only score existing hyp JSONL files (no model load)',
-    )
-    parser.add_argument('--no-resume', action='store_true', help='Ignore existing hyp files')
-    args = parser.parse_args()
+    p = argparse.ArgumentParser(description='NLLB EN->HI on dual eval policies')
+    p.add_argument('--model', default=DEFAULT_MODEL)
+    p.add_argument('--suites', default=','.join(DEFAULT_SUITES))
+    p.add_argument('--max-pairs', type=int, default=None)
+    p.add_argument('--batch-size', type=int, default=1)
+    p.add_argument('--max-input-length', type=int, default=256)
+    p.add_argument('--max-new-tokens', type=int, default=256)
+    p.add_argument('--num-beams', type=int, default=4)
+    p.add_argument('--device', default=None)
+    p.add_argument('--adapters', default=None)
+    p.add_argument('--tag', default=None)
+    p.add_argument('--score-only', action='store_true')
+    p.add_argument('--no-resume', action='store_true')
+    a = p.parse_args()
     run(
-        model_id=args.model,
-        suites=[s.strip() for s in args.suites.split(',') if s.strip()],
-        max_pairs=args.max_pairs,
-        batch_size=args.batch_size,
-        max_input_length=args.max_input_length,
-        max_new_tokens=args.max_new_tokens,
-        num_beams=args.num_beams,
-        device=args.device,
-        score_only=args.score_only,
-        resume=not args.no_resume,
-        adapters=args.adapters,
-        tag=args.tag,
+        model_id=a.model,
+        suites=[s.strip() for s in a.suites.split(',') if s.strip()],
+        max_pairs=a.max_pairs,
+        batch_size=a.batch_size,
+        max_input_length=a.max_input_length,
+        max_new_tokens=a.max_new_tokens,
+        num_beams=a.num_beams,
+        device=a.device,
+        score_only=a.score_only,
+        resume=not a.no_resume,
+        adapters=a.adapters,
+        tag=a.tag,
     )
 
 

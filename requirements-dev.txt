@@ -1,0 +1,4 @@
+# Dev / lint / test extras (optional; production train path uses requirements.txt)
+-r requirements.txt
+ruff>=0.9
+pre-commit>=4.0

@@ -19,6 +19,6 @@ class TestMetricsMt:
     def test_mismatch_length_raises(self):
         try:
             score_pairs(['a'], ['a', 'b'])
-            assert False, 'expected assert'
+            raise AssertionError('expected assert')
         except AssertionError:
             pass
