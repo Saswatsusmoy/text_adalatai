@@ -975,29 +975,49 @@ v2 run: `nllb600_A_A1_c1c_v2_h200_ddp2_20260726T234856Z` (retrain after emb-save
 
 ---
 
-## 31. MBR decoding (inference-only ablation on top of A2)
+## 31. MBR decoding
 
 **Date:** 2026-07-31
 
-**Context:** After A2 LoRA (production) and B'/DoRA (ablations), the remaining defensible lever without any additional training is decoder-side: replace beam search with **Minimum Bayes Risk (MBR)** decoding. Standard NMT technique (Eikema & Aziz 2020; Freitag et al. 2022 chrF utility); no new dependencies (sacrebleu already present).
+**Method:** Replace beam4 with MBR: sample N candidates per source, output the one with highest mean pairwise sentence-chrF utility vs peers. Eikema & Aziz 2020; Freitag et al. 2022 (chrF utility).
 
-**Decision:**
+**Wiring:**
 
-| Item | Choice |
-|------|--------|
-| Module | `src/evaluation/mbr_decode.py` (pure functions: `mbr_pick`, `sample_candidates`, `translate_batch_mbr`) |
-| Utility | Sentence-level **chrF++** (word_order=2) pairwise; `chrf` (word_order=0) also selectable |
-| Sampling | Nucleus: `top_p=0.9`, `temperature=1.0`, `num_beams=1`, `num_return_sequences=N` in one `generate` call |
-| Default N | **8** samples per source |
-| CLI | `--mbr --mbr-samples N --mbr-temperature T --mbr-top-p P --mbr-utility {chrf,chrfpp}` on `src.evaluation.zero_shot_nllb` |
-| Tag naming | Auto-append `_mbr{N}` when `--tag` omitted (separate hyp files, no clobber of beam4 runs) |
+| Item | Value |
+|------|-------|
+| Module | `src/evaluation/mbr_decode.py` |
+| CLI | `src.evaluation.zero_shot_nllb --mbr --mbr-samples N --mbr-temperature T --mbr-top-p P --mbr-utility {chrf,chrfpp}` |
+| Sampling | `do_sample=True, num_beams=1, top_p=0.9, temperature=1.0, num_return_sequences=N` (single `generate` call per input batch) |
+| Utility | sentence chrF++ (word_order=2); chrF (word_order=0) also selectable |
+| Default N | 8 |
+| Tag | auto-append `_mbr{N}` when `--tag` omitted so hyp files don't clobber beam4 runs |
 | Make | `eval-mbr-a2`, `eval-mbr-zs`, `eval-mbr-smoke` |
-| Tests | `tests/evaluation/test_mbr_decode.py` -- pure-function tests only (no NLLB load) |
 
-**Compare:** A2 + MBR vs A2 + beam4 on the three test suites. Promote MBR into decode protocol if dual-policy chrF++ improves without a regression outside noise.
+**Cost:** decode = N× beam1 sampling (single generate, N return sequences); MBR pick = N² sentence-chrF calls per source, negligible vs generation.
 
-**Rationale:** Beam search maximises model probability under a wrong objective (per-token likelihood). MBR maximises expected utility under the model's own distribution. The technique is well-understood, easy to defend at interview (Eikema & Aziz 2020 is the canonical paper), and completely reversible -- toggle a CLI flag. No training, no reward model, no gradient step.
+**Measured (A2 adapters):**
 
-**Cost model:** N samples ≈ N× decode compute per input (sampling with `num_return_sequences=N` is a single kernel launch but produces N times more tokens). MBR utility computation is O(N²) sentence-level chrF per input, negligible vs generation. On H200 bf16 batch=32, expected ≈ 8× the ~3-4 min per suite of the beam4 run.
+| Suite | System | BLEU | chrF++ | n |
+|-------|--------|-----:|-------:|--:|
+| I_test | H200 bf16 beam4 (shipped) | 21.86 | 49.66 | 190 |
+| I_test | MPS fp16 beam4 (control) | 21.85 | 49.68 | 190 |
+| I_test | MPS fp16 MBR N=8, top_p=0.9, T=1.0 | 18.16 | 47.13 | 190 |
+| E_milpac_test | H200 bf16 beam4 (shipped) | 34.90 | 56.46 | 117 |
+| E_milpac_test | MPS fp16 beam4 (control) | 34.71 | 56.55 | 117 |
+| E_milpac_test | MPS fp16 MBR N=8, top_p=0.9, T=1.0 | 31.39 | 54.07 | 117 |
 
-**Status:** Implemented, unit-tested, wiring-smoked on MPS with A2 adapters (2 pairs, 4 samples, correct hyp/report layout). Full I+E test-set MBR run **not yet executed** on H200; run to produce `A2_mbr{N}_best_report.json` and add row to REPORT §4 scoreboard.
+Device / precision delta (MPS beam4 − H200 beam4): I_test −0.01/+0.02, E_milpac −0.18/+0.09 — inside noise.
+
+Decode-only delta (MPS MBR − MPS beam4): I_test **−3.68 BLEU / −2.56 chrF++**, E_milpac **−3.33 BLEU / −2.48 chrF++**.
+
+E_anuvaad_test (n=3000) not run: MPS budget ~4h at this rate.
+
+Reports: `data/analysis/nllb600_A2_mps_mbr8_best_report.json`, `data/analysis/nllb600_A2_mps_beam4_best_report.json`. Hyps under same tag prefix.
+
+**Decision:** do not promote MBR at these settings. Beam4 remains the shipped decode. Follow-ups worth trying before rejecting MBR fully:
+
+1. Lower temperature (T=0.3–0.5) or epsilon-sampling (ε=0.02, Freitag 2022) — the current top_p=0.9 T=1.0 produces high-diversity candidates that hurt consensus.
+2. Higher N (32–128) — literature uses N ≥ 32; N=8 is a low-end MBR configuration.
+3. COMET utility instead of chrF — reference-free QE-guided MBR is where recent papers report the actual gains.
+
+None of these were run in this pass — negative result stands at the tried configuration.

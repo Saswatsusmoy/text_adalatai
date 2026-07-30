@@ -1,9 +1,6 @@
-"""Minimum Bayes Risk (MBR) decoding for NLLB EN->HI.
+"""MBR decoding: sample N candidates, pick argmax mean pairwise chrF utility.
 
-Sample N candidates per source and pick the candidate whose mean pairwise
-utility (chrF / chrF++) vs the other N-1 candidates is highest. Eikema &
-Aziz 2020; Freitag et al. 2022 (chrF utility). No new deps: uses sacrebleu
-already required by src/evaluation/metrics_mt.py.
+Eikema & Aziz 2020; Freitag et al. 2022.
 """
 
 from __future__ import annotations

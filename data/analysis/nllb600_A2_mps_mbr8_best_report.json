@@ -1,0 +1,72 @@
+{
+  "model_id": "facebook/nllb-200-distilled-600M",
+  "adapters": "data/runs/nllb600_A_A2_h200_A2_ddp2_20260726T212958Z/checkpoints/best_primary",
+  "tag": "nllb600_A2_mps_mbr8_best",
+  "device": "mps",
+  "src_lang": "eng_Latn",
+  "tgt_lang": "hin_Deva",
+  "max_input_length": 256,
+  "max_new_tokens": 256,
+  "num_beams": 4,
+  "batch_size": 1,
+  "max_pairs": null,
+  "mbr": {
+    "samples": 8,
+    "temperature": 1.0,
+    "top_p": 0.9,
+    "utility": "chrfpp"
+  },
+  "elapsed_s": 1279.5,
+  "suites": [
+    {
+      "suite": "I_test",
+      "path": "/Users/saswatsusmoy/orca/workspaces/adalat_ai/mbr-decoding/data/processed/test.jsonl",
+      "n": 190,
+      "missing_hyps": 0,
+      "bleu": {
+        "score": 18.1634,
+        "signature": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+        "precisions": [
+          38.6782,
+          22.4924,
+          13.9632,
+          8.9598
+        ],
+        "bp": 1.0,
+        "sys_len": 3480,
+        "ref_len": 2438
+      },
+      "chrfpp": {
+        "score": 47.1263,
+        "signature": "nrefs:1|case:mixed|eff:yes|nc:6|nw:2|space:no|version:2.6.0",
+        "word_order": 2
+      },
+      "hypotheses": "data/analysis/nllb600_A2_mps_mbr8_best_I_test_hyps.jsonl"
+    },
+    {
+      "suite": "E_milpac_test",
+      "path": "/Users/saswatsusmoy/orca/workspaces/adalat_ai/mbr-decoding/data/external/parallel/eval/milpac_test.jsonl",
+      "n": 117,
+      "missing_hyps": 0,
+      "bleu": {
+        "score": 31.3876,
+        "signature": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+        "precisions": [
+          64.0632,
+          39.0222,
+          24.9296,
+          16.196
+        ],
+        "bp": 0.9903,
+        "sys_len": 4494,
+        "ref_len": 4538
+      },
+      "chrfpp": {
+        "score": 54.0663,
+        "signature": "nrefs:1|case:mixed|eff:yes|nc:6|nw:2|space:no|version:2.6.0",
+        "word_order": 2
+      },
+      "hypotheses": "data/analysis/nllb600_A2_mps_mbr8_best_E_milpac_test_hyps.jsonl"
+    }
+  ]
+}

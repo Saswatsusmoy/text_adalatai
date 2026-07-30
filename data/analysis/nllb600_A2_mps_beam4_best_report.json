@@ -1,0 +1,67 @@
+{
+  "model_id": "facebook/nllb-200-distilled-600M",
+  "adapters": "data/runs/nllb600_A_A2_h200_A2_ddp2_20260726T212958Z/checkpoints/best_primary",
+  "tag": "nllb600_A2_mps_beam4_best",
+  "device": "mps",
+  "src_lang": "eng_Latn",
+  "tgt_lang": "hin_Deva",
+  "max_input_length": 256,
+  "max_new_tokens": 256,
+  "num_beams": 4,
+  "batch_size": 1,
+  "max_pairs": null,
+  "mbr": null,
+  "elapsed_s": 586.8,
+  "suites": [
+    {
+      "suite": "I_test",
+      "path": "/Users/saswatsusmoy/orca/workspaces/adalat_ai/mbr-decoding/data/processed/test.jsonl",
+      "n": 190,
+      "missing_hyps": 0,
+      "bleu": {
+        "score": 21.8478,
+        "signature": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+        "precisions": [
+          41.0036,
+          25.708,
+          17.3971,
+          12.4241
+        ],
+        "bp": 1.0,
+        "sys_len": 3368,
+        "ref_len": 2438
+      },
+      "chrfpp": {
+        "score": 49.6815,
+        "signature": "nrefs:1|case:mixed|eff:yes|nc:6|nw:2|space:no|version:2.6.0",
+        "word_order": 2
+      },
+      "hypotheses": "data/analysis/nllb600_A2_mps_beam4_best_I_test_hyps.jsonl"
+    },
+    {
+      "suite": "E_milpac_test",
+      "path": "/Users/saswatsusmoy/orca/workspaces/adalat_ai/mbr-decoding/data/external/parallel/eval/milpac_test.jsonl",
+      "n": 117,
+      "missing_hyps": 0,
+      "bleu": {
+        "score": 34.7143,
+        "signature": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+        "precisions": [
+          66.7642,
+          42.5301,
+          28.714,
+          19.4377
+        ],
+        "bp": 0.9784,
+        "sys_len": 4441,
+        "ref_len": 4538
+      },
+      "chrfpp": {
+        "score": 56.5512,
+        "signature": "nrefs:1|case:mixed|eff:yes|nc:6|nw:2|space:no|version:2.6.0",
+        "word_order": 2
+      },
+      "hypotheses": "data/analysis/nllb600_A2_mps_beam4_best_E_milpac_test_hyps.jsonl"
+    }
+  ]
+}
