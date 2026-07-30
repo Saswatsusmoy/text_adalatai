@@ -6,6 +6,7 @@
 	tokenizer-spm-v2-full-joint profile-hardware \
 	zero-shot-nllb zero-shot-nllb-smoke \
 	eval-mbr-smoke eval-mbr-a2 eval-mbr-zs \
+	comet-score \
 	stage-a-subsample-smoke stage-a-subsample-A1 stage-b-replay-mix \
 	train-nllb-smoke train-nllb-A1 train-nllb-A1-h200 train-nllb-Bp-h200 \
 	train-nllb-A2-dora-h200 \
@@ -152,6 +153,16 @@ eval-mbr-a2:
 		--mbr --mbr-samples $(MBR_SAMPLES) \
 		--mbr-temperature $(MBR_TEMPERATURE) --mbr-top-p $(MBR_TOP_P) \
 		--mbr-utility $(MBR_UTILITY)
+
+# --- COMET-22 scoring over all data/analysis/*_hyps.jsonl (cache-safe / resumable) ---
+
+COMET_MODEL ?= Unbabel/wmt22-comet-da
+COMET_BATCH ?= 32
+COMET_GPUS ?= 1
+
+comet-score:
+	PYTHONPATH=. python3 -m src.evaluation.comet_score \
+		--model $(COMET_MODEL) --batch-size $(COMET_BATCH) --gpus $(COMET_GPUS)
 
 # --- Phase 3: training (Track D default; Track C via train-c1* / c1c*) ---
 

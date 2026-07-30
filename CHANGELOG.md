@@ -52,6 +52,11 @@
   - Lightweight MT metrics + I/E reports under `data/analysis/` (scores JSON + hyp JSONL for
     qualitative review). Full multi-GB `data/runs/` and Stage A pools remain gitignored.
 
+- **COMET-22 scoring (Unbabel/wmt22-comet-da)** for all shipped hyps (`docs/EXPERIMENTS.md` §5.1, `REPORT.md` §4):
+  - `src/evaluation/comet_score.py`: scans `data/analysis/*_hyps.jsonl`, scores each with reference-based COMET-22 on GPU, writes `data/analysis/comet22_summary.json` (cache-safe, resumable). Make: `comet-score`.
+  - **Scores (H200 batch=32):** ZS 0.7074 / 0.8022 / 0.7853; A1 0.7140 / 0.7996 / 0.7931; A2 0.7142 / 0.8012 / **0.7944**; A2 DoRA 0.7113 / 0.7980 / 0.7927; B 0.7095 / 0.7888 / 0.7780; B' **0.7165** / 0.7971 / 0.7881; C1c v2 0.6631 / 0.7502 / 0.7529; C1c v1 0.4971 / 0.5319 / 0.5441 (I_test / E_milpac / E_anuvaad).
+  - COMET reinforces BLEU/chrF++ verdicts. Nuance: B' edges A2 on I_test COMET (+0.002) but A2 still wins dual policy (E_anuvaad +0.006). Adapters slightly regress E_milpac COMET vs zero-shot (0.8022 -> 0.8012 for A2) -- MILPaC domain shift.
+
 - **MBR decode ablation on A2** (DESIGN_DECISIONS §31, `docs/EXPERIMENTS.md` §5.4):
   - `src/evaluation/mbr_decode.py`: `mbr_pick`, `sample_candidates`, `translate_batch_mbr` (nucleus sample N + argmax mean pairwise sentence-chrF++ utility; Eikema & Aziz 2020, Freitag et al. 2022).
   - `src/evaluation/zero_shot_nllb.py`: `--mbr --mbr-samples N --mbr-temperature T --mbr-top-p P --mbr-utility {chrf,chrfpp}`; auto-appends `_mbr{N}` to tag so hyp files don't clobber beam4 runs.

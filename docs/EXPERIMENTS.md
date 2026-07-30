@@ -321,6 +321,21 @@ Reports: `data/analysis/nllb600_{A1,A2,B}_h200_best_report.json`,
 `data/analysis/nllb600_A2_dora_h200_best_report.json`,
 `data/analysis/final_dual_policy_report.json`, `zero_shot_nllb_report(_h200).json`.
 
+**COMET-22 (Unbabel/wmt22-comet-da), same shipped hyps:**
+
+| System | I_test | E_milpac | E_anuvaad |
+|--------|-------:|---------:|----------:|
+| Zero-shot | 0.7074 | 0.8022 | 0.7853 |
+| A1 | 0.7140 | 0.7996 | 0.7931 |
+| **A2 (production)** | 0.7142 | 0.8012 | **0.7944** |
+| A2 DoRA | 0.7113 | 0.7980 | 0.7927 |
+| B | 0.7095 | 0.7888 | 0.7780 |
+| B' | **0.7165** | 0.7971 | 0.7881 |
+| C1c v2 careful A1 | 0.6631 | 0.7502 | 0.7529 |
+| C1c v1 bulk A1 | 0.4971 | 0.5319 | 0.5441 |
+
+COMET reinforces the BLEU/chrF++ ordering with one nuance: **B' edges A2 on I_test COMET (+0.002)** while A2 still leads dual-policy (E_anuvaad +0.006 vs B'). Zero-shot has the highest E_milpac COMET; adapters shift slightly toward SC-style legal Hindi. DoRA is within noise of A2 on all three suites. Scorer: `src/evaluation/comet_score.py`; summary: `data/analysis/comet22_summary.json`.
+
 ### 5.2 Track C1c (NLLB vocab-extend + LoRA A1)
 
 C0 freeze still `joint_full_41000` for pure custom-vocab story. C1c instead **extends

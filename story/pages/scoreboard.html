@@ -127,8 +127,35 @@
       not from shrinking the NLLB vocab.
     </p>
 
-    <h2>Optional metric not run</h2>
-    <p>COMET / CometKiwi -- optional in the brief; listed under future work.</p>
+    <h2>COMET-22 (Unbabel/wmt22-comet-da, reference-based)</h2>
+    <p>
+      Neural metric on the same shipped hyps. Scorer: <code>src/evaluation/comet_score.py</code>,
+      <code>make comet-score</code>. Summary: <code>data/analysis/comet22_summary.json</code>.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>System</th><th>I_test</th><th>E_milpac</th><th>E_anuvaad</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Zero-shot NLLB</td><td class="num">0.7074</td><td class="num"><strong>0.8022</strong></td><td class="num">0.7853</td></tr>
+          <tr><td>D A1 LoRA</td><td class="num">0.7140</td><td class="num">0.7996</td><td class="num">0.7931</td></tr>
+          <tr><td><strong>D A2 LoRA (prod)</strong></td><td class="num">0.7142</td><td class="num">0.8012</td><td class="num"><strong>0.7944</strong></td></tr>
+          <tr><td>D A2 DoRA</td><td class="num">0.7113</td><td class="num">0.7980</td><td class="num">0.7927</td></tr>
+          <tr><td>D Stage B</td><td class="num">0.7095</td><td class="num">0.7888</td><td class="num">0.7780</td></tr>
+          <tr><td>D Stage B' replay</td><td class="num"><strong>0.7165</strong></td><td class="num">0.7971</td><td class="num">0.7881</td></tr>
+          <tr><td>C1c v2 careful A1</td><td class="num">0.6631</td><td class="num">0.7502</td><td class="num">0.7529</td></tr>
+          <tr><td>C1c v1 bulk A1</td><td class="num">0.4971</td><td class="num">0.5319</td><td class="num">0.5441</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      COMET reinforces the BLEU / chrF++ ordering with one nuance: <strong>B' edges A2 on
+      I_test COMET</strong> (+0.002) while A2 still wins dual policy (E_anuvaad +0.006).
+      Adapters slightly regress E_milpac COMET vs zero-shot &mdash; MILPaC is closer to NLLB's
+      base training distribution, and legal-domain LoRA shifts toward SC-style Hindi.
+      DoRA is inside noise of A2 on all three suites.
+    </p>
   </div>
   <script src="../js/site.js"></script>
 </body>

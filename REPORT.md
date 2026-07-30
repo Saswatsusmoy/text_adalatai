@@ -203,7 +203,30 @@ Scores are **BLEU / chrF++**.
 
 **Why not Stage B:** raises I BLEU but **forgets E** (MILPaC chrF++ drop ~5.2 > 2.0 anti-forget limit). B' recovers much of E but does not beat A2 on dual policy. **Ship A2.**
 
-COMET: not run (optional). Machine reports: `data/analysis/final_dual_policy_report.json` and per-system `*_best_report.json`.
+### COMET-22 (Unbabel/wmt22-comet-da, reference-based)
+
+Neural metric on the same shipped hyps. Scored on H200 (`src/evaluation/comet_score.py`, `make comet-score`).
+
+| System | I_test | E_milpac | E_anuvaad |
+|--------|-------:|---------:|----------:|
+| Zero-shot NLLB | 0.7074 | **0.8022** | 0.7853 |
+| D A1 LoRA | 0.7140 | 0.7996 | 0.7931 |
+| **D A2 LoRA (production)** | 0.7142 | 0.8012 | **0.7944** |
+| D A2 DoRA | 0.7113 | 0.7980 | 0.7927 |
+| D B LoRA | 0.7095 | 0.7888 | 0.7780 |
+| D B' (replay) | **0.7165** | 0.7971 | 0.7881 |
+| C1c v2 careful A1 | 0.6631 | 0.7502 | 0.7529 |
+| C1c v1 bulk A1 | 0.4971 | 0.5319 | 0.5441 |
+
+Observations:
+
+- **Adapters help I_test COMET** (A2 +0.007, B' +0.009 vs zero-shot). Small absolute values but consistent direction.
+- **Adapters slightly hurt E_milpac COMET** (all adapted systems score below zero-shot). MILPaC is already close to base's training distribution -- LoRA moves the model toward SC-style legal Hindi and away from MILPaC's mixed sub-domains.
+- **B' edges A2 on I_test COMET** (+0.002); A2 still leads dual-policy overall (E_anuvaad +0.006 vs B'). Same story as chrF++.
+- **DoRA is inside noise vs A2 on all three** (-0.003 max). Consistent with the BLEU/chrF++ verdict.
+- **C1c v1 catastrophic**, C1c v2 clearly below zero-shot. Consistent.
+
+Machine reports: `data/analysis/comet22_summary.json`, per-system `*_best_report.json` (BLEU/chrF++), `final_dual_policy_report.json`.
 
 ### Decode ablation -- MBR vs beam4 (A2 adapters)
 
