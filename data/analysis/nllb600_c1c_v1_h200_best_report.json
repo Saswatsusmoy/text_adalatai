@@ -1,0 +1,91 @@
+{
+  "model_id": "data/models/nllb600_c1c_sp_ext",
+  "adapters": "data/runs/nllb600_A_A1_c1c_h200_ddp2_20260726T225043Z/checkpoints/best_primary",
+  "tag": "nllb600_c1c_v1_h200_best",
+  "device": "cuda",
+  "src_lang": "eng_Latn",
+  "tgt_lang": "hin_Deva",
+  "max_input_length": 256,
+  "max_new_tokens": 256,
+  "num_beams": 4,
+  "batch_size": 32,
+  "max_pairs": null,
+  "elapsed_s": 519.4,
+  "suites": [
+    {
+      "suite": "I_test",
+      "path": "data/processed/test.jsonl",
+      "n": 190,
+      "missing_hyps": 0,
+      "bleu": {
+        "score": 6.3803,
+        "signature": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+        "precisions": [
+          21.3224,
+          8.6019,
+          4.1815,
+          2.1608
+        ],
+        "bp": 1.0,
+        "sys_len": 4038,
+        "ref_len": 2438
+      },
+      "chrfpp": {
+        "score": 24.8605,
+        "signature": "nrefs:1|case:mixed|eff:yes|nc:6|nw:2|space:no|version:2.6.0",
+        "word_order": 2
+      },
+      "hypotheses": "data/analysis/nllb600_c1c_v1_h200_best_I_test_hyps.jsonl"
+    },
+    {
+      "suite": "E_milpac_test",
+      "path": "data/external/parallel/eval/milpac_test.jsonl",
+      "n": 117,
+      "missing_hyps": 0,
+      "bleu": {
+        "score": 10.6586,
+        "signature": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+        "precisions": [
+          39.7941,
+          15.683,
+          7.1308,
+          3.3822
+        ],
+        "bp": 0.9623,
+        "sys_len": 4370,
+        "ref_len": 4538
+      },
+      "chrfpp": {
+        "score": 28.6261,
+        "signature": "nrefs:1|case:mixed|eff:yes|nc:6|nw:2|space:no|version:2.6.0",
+        "word_order": 2
+      },
+      "hypotheses": "data/analysis/nllb600_c1c_v1_h200_best_E_milpac_test_hyps.jsonl"
+    },
+    {
+      "suite": "E_anuvaad_test",
+      "path": "data/external/parallel/eval/anuvaad_test.jsonl",
+      "n": 3000,
+      "missing_hyps": 0,
+      "bleu": {
+        "score": 15.6506,
+        "signature": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+        "precisions": [
+          42.8202,
+          20.8028,
+          11.1017,
+          6.0668
+        ],
+        "bp": 1.0,
+        "sys_len": 88902,
+        "ref_len": 86447
+      },
+      "chrfpp": {
+        "score": 34.346,
+        "signature": "nrefs:1|case:mixed|eff:yes|nc:6|nw:2|space:no|version:2.6.0",
+        "word_order": 2
+      },
+      "hypotheses": "data/analysis/nllb600_c1c_v1_h200_best_E_anuvaad_test_hyps.jsonl"
+    }
+  ]
+}

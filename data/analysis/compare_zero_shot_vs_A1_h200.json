@@ -1,0 +1,62 @@
+{
+  "protocol": {
+    "decode": "beam=4 max_new_tokens=256 max_input=256",
+    "device": "cuda H200 batch=32 bf16",
+    "zero_shot_tag": "zero_shot_nllb",
+    "zero_shot_elapsed_s": 159.0,
+    "finetuned_adapters": "data/runs/nllb600_A_A1_h200_ddp2_20260726T204933Z/checkpoints/best_primary",
+    "finetuned_tag": "nllb600_A1_h200_best",
+    "finetuned_elapsed_s": 281.3,
+    "finetuned_run": "nllb600_A_A1_h200_ddp2_20260726T204933Z best_primary step 3000"
+  },
+  "suites": [
+    {
+      "suite": "I_test",
+      "n": 190,
+      "zero_shot": {
+        "bleu": 18.85,
+        "chrfpp": 44.74
+      },
+      "finetuned_A1_best": {
+        "bleu": 21.67,
+        "chrfpp": 49.16
+      },
+      "delta": {
+        "bleu": 2.82,
+        "chrfpp": 4.42
+      }
+    },
+    {
+      "suite": "E_milpac_test",
+      "n": 117,
+      "zero_shot": {
+        "bleu": 34.28,
+        "chrfpp": 55.22
+      },
+      "finetuned_A1_best": {
+        "bleu": 34.66,
+        "chrfpp": 55.98
+      },
+      "delta": {
+        "bleu": 0.38,
+        "chrfpp": 0.76
+      }
+    },
+    {
+      "suite": "E_anuvaad_test",
+      "n": 3000,
+      "zero_shot": {
+        "bleu": 39.39,
+        "chrfpp": 60.08
+      },
+      "finetuned_A1_best": {
+        "bleu": 45.17,
+        "chrfpp": 64.33
+      },
+      "delta": {
+        "bleu": 5.77,
+        "chrfpp": 4.25
+      }
+    }
+  ]
+}

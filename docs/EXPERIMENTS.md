@@ -4,6 +4,8 @@ Running log of experiments for Adalat AI (legal EN->HI). Decisions and short
 rationales also live in `DESIGN_DECISIONS.md`; this file holds tables, freezes,
 and how to reproduce.
 
+**Assignment report (start here for submission):** [`REPORT.md`](../REPORT.md)
+
 **Related:** `CHANGELOG.md`, `DESIGN_DECISIONS.md`, `.local/dual_track_experiment_plan.md` (private).
 
 ---
@@ -97,13 +99,45 @@ Already sentence-aligned upstream. We do **not** re-run PDF/OCR/LaBSE.
 Code: `src/preprocessing/ingest_external_parallel.py`  
 Make: `make external-ingest`
 
-### 3.3 Role split
+### 3.3 Role split (dual eval policies)
 
 | Data | Use |
 |------|-----|
-| Stage A JSONL | Domain FT/LoRA only (Track D and C) |
+| **`stage_a_train.jsonl`** | Stage A MT train only (~988k) |
 | Assignment train | Stage B only |
-| Assignment dev/test | Eval only; never SPM fit, never MT train |
+| **Policy I** assignment test/dev | Internal eval (frozen docs) |
+| **Policy E** external held-out | External legal eval (never MT train) |
+
+#### Policy I -- internal assignment
+
+| Split | Path | Pairs (approx) |
+|-------|------|---------------:|
+| test | `data/processed/test.jsonl` | 190 |
+| dev | `data/processed/dev.jsonl` | 132 |
+| train | `data/processed/train.jsonl` | 1,136 |
+
+Docs: test **1,4,21**; dev **8,9,24**; train the rest (seed 42).
+
+#### Policy E -- external held-out
+
+Carved from `stage_a_en_hi.jsonl` **before** Stage A FT (`make external-eval-split`):
+
+| File | Content | Count (seed 42) |
+|------|---------|----------------:|
+| `eval/milpac_test.jsonl` | 10% MILPaC | 117 |
+| `eval/milpac_dev.jsonl` | 10% MILPaC | 117 |
+| `eval/anuvaad_test.jsonl` | 3,000 Anuvaad | 3,000 |
+| `eval/anuvaad_dev.jsonl` | 1,000 Anuvaad | 1,000 |
+| `eval/external_test.jsonl` | milpac+anuvaad test | 3,117 |
+| `stage_a_train.jsonl` | remainder | 988,331 |
+
+Manifest: `data/external/parallel/eval/eval_manifest.json`  
+Validate: `PYTHONPATH=. python3 -m src.evaluation.eval_sets`  
+Code: `split_external_eval.py`, `src/evaluation/eval_sets.py`
+
+**Every MT system reports at least:** `I_test`, `E_milpac_test`, `E_anuvaad_test` (or combined `E_external_test`).
+
+**SPM note:** v2 was fit on full `stage_a_en_hi` before this carve. MT must still train only on `stage_a_train`. Optional later: rebuild SPM excluding E lines for strictest science.
 
 ---
 
@@ -242,31 +276,107 @@ Eval default for v2 benches: **held_out** = assignment dev+test only (SPM never 
 
 ---
 
-## 5. Dual-track experiment plan (MT next)
+## 5. Dual-track MT (Track D + Track C1c) -- results
 
-Full private write-up: `.local/dual_track_experiment_plan.md`.
+Hardware: local M4 default; optional remote 2xH200 (`ssh.jnan.ai`) when free.
+See [`docs/HARDWARE_MLX.md`](HARDWARE_MLX.md), [`docs/TRAINING_STRATEGY.md`](TRAINING_STRATEGY.md),
+DESIGN_DECISIONS §23-26.
 
-### Track D (defaults)
+**Decode protocol (all full tests):** beam 4, max_new 256, max_in 256, batch 32, bf16 on H200.
 
-1. Zero-shot InLegalTrans and/or NLLB on assignment **test**
-2. Stage A LoRA on `stage_a_en_hi.jsonl`
-3. Stage B LoRA on assignment `train.jsonl`
-4. Metrics: BLEU, chrF++, COMET, legal error panel, token cost
+### 5.1 Track D (stock NLLB-600M + LoRA)
 
-### Track C (custom vocab)
+| Phase | Run (remote) | Data | Resume | Steps / LR |
+|-------|--------------|------|--------|------------|
+| Zero-shot | base HF | -- | -- | -- |
+| A1 | `nllb600_A_A1_h200_ddp2_*` | A1 80k | base | 3000 / 1e-4 |
+| A2 | `nllb600_A_A2_h200_A2_ddp2_*` | A2 150k | A1 best | 3000 / 5e-5 |
+| B | `nllb600_B_full_h200_B_ddp2_*` | assignment 1136 | A2 best | 800 / 3e-5 |
 
-1. **C0 done:** freeze `joint_full_41000`
-2. **C1 next:** adapt or train a model to that vocab (emb resize / vocab-extend / from-scratch)
-3. Same Stage A/B data and eval as Track D
+Configs: `configs/training_h200.yaml`, `_A2`, `_B`.
 
-### Comparison table (to fill after MT)
+| System | I_test BLEU/chrF++ | E_milpac | E_anuvaad |
+|--------|-------------------:|---------:|----------:|
+| Zero-shot | 18.85 / 44.74 | 34.28 / 55.22 | 39.39 / 60.08 |
+| A1 best | 21.67 / 49.16 | 34.66 / 55.98 | 45.17 / 64.33 |
+| **A2 best (production)** | **21.86 / 49.66** | **34.90 / 56.46** | **45.80 / 64.83** |
+| B best | 23.10 / 48.89 | 30.92 / 51.22 | 40.44 / 59.60 |
+
+**Decision (DESIGN §25):** production dual-policy = **A2 `best_primary`**, not Stage B.
+B boosts I BLEU but fails E anti-forget (MILPaC chrF++ drop >5).
+
+Reports: `data/analysis/nllb600_{A1,A2,B}_h200_best_report.json`,
+`data/analysis/final_dual_policy_report.json`, `zero_shot_nllb_report(_h200).json`.
+
+### 5.2 Track C1c (NLLB vocab-extend + LoRA A1)
+
+C0 freeze still `joint_full_41000` for pure custom-vocab story. C1c instead **extends
+NLLB vocab** with legal pieces (keeps NLLB priors) rather than training from-scratch (C1a
+Marian scaffold stopped as weak quality path). DESIGN §26.
+
+#### C1c v1 -- bulk extend (ablation)
+
+| Item | Value |
+|------|--------|
+| Script | `src/training/vocab_extend_nllb.py` |
+| Model | `data/models/nllb600_c1c_sp_ext` (+~8k raw SPM piece strings) |
+| Train | full `embed_tokens` via PEFT `modules_to_save` + decoder_attn LoRA |
+| Config | `configs/training_c1c_h200.yaml` |
+| Run | `nllb600_A_A1_c1c_h200_ddp2_20260726T225043Z` (3000 steps, DDP2) |
+| Dev best | primary chrF++ ~28.7 @ step 500 (collapsed later) |
+
+**Failure mode:** bulk `add_tokens` can split good NLLB singles (e.g. probe regressions) and
+destabilize the embedding table.
+
+#### C1c v2 -- careful extend (primary C experiment)
+
+| Item | Value |
+|------|--------|
+| Script | `src/training/vocab_extend_nllb_v2.py` |
+| Model | `data/models/nllb600_c1c_sp_ext_v2` (+1500 verified surfaces, vocab 257669) |
+| Rules | surface only; add only if base fragments; reject protected-substring / probe regression |
+| Init | mean of base encode pieces for new rows |
+| Train | LoRA + **grad mask** only new emb rows (`peft.new_embed_start=256204`) |
+| Config | `configs/training_c1c_v2_h200.yaml` (global batch 32, DDP2) |
+| Run (scoreable) | `nllb600_A_A1_c1c_v2_h200_ddp2_20260726T234856Z` |
+| Dev best | primary chrF++ **53.61** @ step 1000 |
+
+**Checkpoint fix:** first DDP run lost trained emb rows (PEFT LoRA-only adapter, no
+`modules_to_save`). `_save_peft` now writes `new_embed_rows.pt`; eval/resume apply via
+`apply_new_embed_rows`. Retrain required before full test.
+
+#### Full test comparison (same protocol as Track D)
+
+| System | I_test | E_milpac | E_anuvaad |
+|--------|-------:|---------:|----------:|
+| Zero-shot | 18.85 / 44.74 | 34.28 / 55.22 | 39.39 / 60.08 |
+| **D A2 (production)** | **21.86 / 49.66** | **34.90 / 56.46** | **45.80 / 64.83** |
+| C1c v2 careful A1 | 17.79 / 43.86 | 28.20 / 49.78 | 37.64 / 58.46 |
+| C1c v1 bulk A1 | 6.38 / 24.86 | 10.66 / 28.63 | 15.65 / 34.35 |
+
+Deltas C1c v2 vs zero-shot: I -1.06 / -0.89; MILPaC -6.08 / -5.44; Anuvaad -1.75 / -1.63 (BLEU/chrF++).
+Deltas C1c v2 vs A2: I -4.07 / -5.80; MILPaC -6.70 / -6.68; Anuvaad -8.16 / -6.37.
+
+Reports: `data/analysis/nllb600_c1c_v{1,2}_h200_best_report.json` (hyps same tag prefix).
+
+**Decision (DESIGN §26 after test):** production dual-policy stays **Track D A2**.
+C1c v2 is a negative result vs zero-shot on this A1 budget; careful extend is documented
+methodology, not a quality win. C1c v1 is a failed bulk-extend ablation. Optional later
+research only (C1c-A2 resume, longer emb warm-up) -- not production.
+
+### 5.3 Dual-track scoreboard (closed for production pick)
 
 ```text
-System                     | BLEU | chrF++ | COMET | HI tok/doc | legal panel
-D zero-shot ...            |      |        |       |            |
-D A+B LoRA ...             |      |        |       |            |
-C A+B custom-vocab ...     |      |        |       |            |
+System                  I_test BLEU/chrF++   E_milpac        E_anuvaad
+Zero-shot NLLB          18.85 / 44.74        34.28 / 55.22   39.39 / 60.08
+D A1 LoRA               21.67 / 49.16        34.66 / 55.98   45.17 / 64.33
+D A2 LoRA (prod)        21.86 / 49.66        34.90 / 56.46   45.80 / 64.83
+D B LoRA                23.10 / 48.89        30.92 / 51.22   40.44 / 59.60
+C1c v2 careful A1       17.79 / 43.86        28.20 / 49.78   37.64 / 58.46
+C1c v1 bulk A1           6.38 / 24.86        10.66 / 28.63   15.65 / 34.35
 ```
+
+COMET / legal error panel: not run (optional).
 
 ---
 
@@ -278,8 +388,13 @@ C A+B custom-vocab ...     |      |        |       |            |
 4. Domain SP on legal text beats general SPMs on **this** legal bench (v1 and v2).
 5. For MT, train SPM on **joint EN+HI**, not HI-only.
 6. Full joint train is feasible on 16GB with **dedupe + memory profile**.
-7. Larger vocab (64k) packs slightly better; **41k frozen** to reduce subword-overfit risk and emb size.
-8. MT training and dual-track **quality** metrics are **not started** yet.
+7. Larger vocab (64k) packs slightly better; **41k frozen** for pure Track C emb size.
+8. **Track D NLLB LoRA works:** A2 is best dual-policy checkpoint; Stage B without E replay overfits I and forgets E.
+9. **Bulk NLLB vocab-extend (C1c v1) fails hard** (breaks singles / emb; test far below zero-shot).
+10. **Careful vocab-extend (C1c v2) is still below zero-shot and A2** on full I+E after A1-only train;
+    production stays D A2. Custom-vocab surgery did not beat stock NLLB priors on this recipe.
+11. Always persist trained emb rows when using grad-mask / non-`modules_to_save` emb training
+    (`new_embed_rows.pt`).
 
 ---
 
@@ -290,20 +405,74 @@ C A+B custom-vocab ...     |      |        |       |            |
 | `data/aligned/all.jsonl` | Assignment aligned pairs |
 | `data/processed/{train,dev,test}.jsonl` | Frozen splits |
 | `data/external/parallel/stage_a_en_hi.jsonl` | Stage A bitext |
+| `data/external/parallel/stage_a_train.jsonl` | Stage A train after E holdout |
+| `data/external/parallel/eval/*` | E milpac/anuvaad dev+test |
 | `data/external/spm_corpus_legal_v2_*.txt` | SPM train text |
 | `data/models/tokenizers/sentencepiece_*.model` | v1 + v2 SPMs |
-| `data/models/tokenizers/sentencepiece_legal_v2_joint_full_41000.model` | **Track C freeze** |
+| `data/models/tokenizers/sentencepiece_legal_v2_joint_full_41000.model` | **Track C0 freeze** |
+| `data/models/nllb600_c1c_sp_ext/` | C1c v1 extended NLLB |
+| `data/models/nllb600_c1c_sp_ext_v2/` | C1c v2 careful extended NLLB |
 | `data/analysis/tokenizer_*.json` | Bench dumps |
+| `data/analysis/zero_shot_nllb_report*.json` | Zero-shot full test |
+| `data/analysis/nllb600_{A1,A2,B}_h200_best_report.json` | Track D full test |
+| `data/analysis/nllb600_c1c_v{1,2}_h200_best_report.json` | Track C1c full test |
+| `data/analysis/final_dual_policy_report.json` | Combined dual-policy decision dump |
+| `data/runs/nllb600_A_A2_* /checkpoints/best_primary` | **Production adapters (D A2)** |
 | `src/config.py` | `SPM_V2_PRIMARY`, split IDs |
 
 ---
 
-## 8. Open work
+## 8. Local hardware + MLX (training policy)
 
-- [ ] Track D zero-shot baselines  
-- [ ] Track D Stage A + B LoRA  
-- [ ] Track C1 adapt model to `SPM_V2_PRIMARY`  
-- [ ] Unified quality + token-cost table  
+**Policy:** local-only (no cloud GPU required). Profile before choosing model sizes.
+
+```bash
+make profile-hardware
+# -> data/analysis/hardware_profile.json
+```
+
+Full write-up: [`docs/HARDWARE_MLX.md`](HARDWARE_MLX.md).
+
+| Item | Profiled value |
+|------|----------------|
+| Chip | Apple M4 (10 cores) |
+| Memory | 16 GB unified |
+| MLX | GPU device; mlx + mlx-lm OK |
+| PyTorch | MPS OK |
+
+| Path | Backend |
+|------|---------|
+| NLLB / InLegalTrans (enc-dec) | **PyTorch MPS** |
+| Small LLM LoRA (1B-3B 4-bit) | **MLX / mlx-lm** |
+| Custom SPM freeze | `SPM_V2_PRIMARY` (joint_full 41k); needs training path that can load it |
+
+16GB rules: batch 1, seq ~256, prefer 4-bit for LLMs, subsample Stage A before full 992k.
+
+---
+
+## 9. Open work
+
+- [x] Profile local M4 16GB + MLX/MPS smoke  
+- [x] Dual eval policies I + E (split + validate)  
+- [x] Track D zero-shot NLLB-600M on MPS (I_test + E_milpac + E_anuvaad)  
+  - I_test: BLEU 18.78 / chrF++ 44.62 (n=190)  
+  - E_milpac_test: BLEU 34.14 / chrF++ 55.12 (n=117)  
+  - E_anuvaad_test: BLEU 39.44 / chrF++ 60.08 (n=3000)  
+  - Report: `data/analysis/zero_shot_nllb_report.json`  
+- [x] Training strategy + `configs/training.yaml` (`docs/TRAINING_STRATEGY.md`)  
+- [x] Implement train loop T1-T2 (subsample, LoRA, logging, checkpoints); smoke 20 steps OK  
+- [x] Stage A LoRA full run (A1 then A2) + gen eval / final I+E on H200  
+  - A1 best test: I 21.67/49.16; MILPaC 34.66/55.98; Anuvaad 45.17/64.33  
+  - A2 best test: I 21.86/49.66; MILPaC 34.90/56.46; Anuvaad 45.80/64.83  
+- [x] Stage B LoRA + final I/E table  
+  - B best test: I 23.10/48.89; MILPaC 30.92/51.22; Anuvaad 40.44/59.60  
+  - Recommend **A2 best** (B fails E anti-forget); report `data/analysis/final_dual_policy_report.json`  
+- [x] Track C1c NLLB vocab-extend + LoRA A1 (v1 bulk + v2 careful) + full I+E test  
+  - v2 careful: I 17.79/43.86; MILPaC 28.20/49.78; Anuvaad 37.64/58.46 (below zero-shot)  
+  - v1 bulk: I 6.38/24.86; MILPaC 10.66/28.63; Anuvaad 15.65/34.35 (failed ablation)  
+  - **Production remains D A2**; C1c does not replace Track D (DESIGN §26, EXPERIMENTS §5.2)  
+- [ ] Optional mlx-lm 1B-3B 4-bit LoRA smoke  
+- [ ] Optional C1c-A2 / longer emb warm-up (research only; not production)  
 - [ ] Assignment report write-up  
 
-Last updated: 2026-07-26 (C0 complete; 41k joint_full freeze).
+Last updated: 2026-07-27 (Track D + C1c full dual-policy tests closed; prod = D A2).

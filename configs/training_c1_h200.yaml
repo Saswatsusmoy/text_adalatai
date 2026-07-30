@@ -1,0 +1,104 @@
+# Track C1 on 2x H200: Marian-512/6+6 + SPM joint_full_41000, A1 data.
+# From-scratch (C1a-small). Compare to Track D NLLB LoRA on same I+E tests.
+
+run:
+  track: C1
+  stage: A
+  seed: 42
+  output_root: data/runs
+  tag: c1_h200
+
+model:
+  spm_path: data/models/tokenizers/sentencepiece_legal_v2_joint_full_41000.model
+  arch:
+    d_model: 512
+    encoder_layers: 6
+    decoder_layers: 6
+    encoder_attention_heads: 8
+    decoder_attention_heads: 8
+    encoder_ffn_dim: 2048
+    decoder_ffn_dim: 2048
+    max_position_embeddings: 512
+    dropout: 0.1
+
+data:
+  stage_a_train: data/external/parallel/stage_a_train.jsonl
+  stage_b_train: data/processed/train.jsonl
+  train_jsonl: data/external/parallel/subsamples/stage_a_A1_n80000.jsonl
+  curriculum: A1
+  subsample:
+    seed: 42
+    smoke_n: 2000
+    A1_max_n: 80000
+    A2_max_n: 150000
+    prefer_sources:
+      - milpac_Acts
+      - milpac_CCI_FAQ
+      - milpac_IP
+      - anuvaad_hc_suvas
+      - anuvaad_law_commission
+      - anuvaad_judiciary
+    judiciary_cap_A1: 40000
+  max_source_length: 256
+  max_target_length: 256
+
+optim:
+  lr: 3.0e-4
+  lr_stage_b: 5.0e-5
+  weight_decay: 0.01
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  warmup_ratio: 0.05
+  scheduler: cosine
+  max_grad_norm: 1.0
+
+train:
+  batch_size: 32
+  global_batch_size: 64
+  grad_accum_steps: 1
+  max_steps_stage_a: 8000
+  max_steps_stage_b: 1000
+  log_every_steps: 20
+  eval_loss_every_steps: 200
+  eval_gen_every_steps: 500
+  save_every_steps: 500
+  early_stop_patience_evals: 6
+  num_workers: 4
+  pin_memory: true
+  prefetch_factor: 2
+  pad_to_fixed: true
+  pad_to_multiple_of: 8
+
+decode:
+  num_beams: 4
+  max_new_tokens: 256
+  eval_batch_size: 32
+
+eval:
+  policy_I_dev: data/processed/dev.jsonl
+  policy_I_test: data/processed/test.jsonl
+  policy_E_milpac_dev: data/external/parallel/eval/milpac_dev.jsonl
+  policy_E_milpac_test: data/external/parallel/eval/milpac_test.jsonl
+  policy_E_anuvaad_dev: data/external/parallel/eval/anuvaad_dev.jsonl
+  policy_E_anuvaad_test: data/external/parallel/eval/anuvaad_test.jsonl
+  anuvaad_dev_max_pairs: 200
+  selection:
+    stage_a_weights:
+      E_milpac_dev: 0.5
+      E_anuvaad_dev_sample: 0.3
+      I_dev: 0.2
+    stage_b_weights:
+      I_dev: 0.7
+      E_milpac_dev: 0.3
+
+monitoring:
+  stop_on_nan: true
+
+hardware:
+  device_preference:
+    - cuda
+    - cpu
+  allow_tf32: true
+  cudnn_benchmark: true
+  prefer_flash_sdp: true
+  pick_most_free_gpu: false

@@ -4,7 +4,66 @@
 
 ### Added
 
+- **Submission package:**
+  - `REPORT.md` -- assignment-facing write-up (tokenizer, data, NLLB LoRA, BLEU/chrF++ tables,
+    qualitative ZS vs A2 panel, reflection, codebase map).
+  - README rewritten as submission entrypoint (report link, production A2 scores, train/eval
+    layout, adapter score command).
+  - Lightweight MT metrics + I/E reports under `data/analysis/` (scores JSON + hyp JSONL for
+    qualitative review). Full multi-GB `data/runs/` and Stage A pools remain gitignored.
+
+- **DoRA ablation on A2 data** (DESIGN_DECISIONS §28):
+  - `build_lora_config` supports `peft.use_dora` / `peft.method: dora` (PEFT weight-decomposed LoRA).
+  - Config `configs/training_h200_A2_dora.yaml`: decoder_attn r=16, A2 150k from base, LR 1e-4, 3000 steps DDP2.
+  - Make: `train-nllb-A2-dora-h200`. Tests: `tests/training/test_lora_dora.py`.
+
+- **Stage B' anti-forget replay trained + scored on H200** (DESIGN_DECISIONS §27):
+  - `build_stage_b_replay_mix` in `src/training/subsample.py` -- all assignment train + domain replay from A2 subsample (default 90/10 by count, seed 42, exact pair dedup); writes `data/external/parallel/subsamples/stage_b_Bp_*` + manifest.
+  - `configs/training_h200_Bp.yaml` -- resume A2 best, LR 2e-5, max 500 steps, stage_b_replay enabled, slightly higher E weight in selection.
+  - `train_nllb_lora` -- Stage B honors `data.train_jsonl` or builds Bp mix when `curriculum=Bp` / `stage_b_replay.enabled`; resume adapters from `resume.adapters` or `--resume-adapters`; config-driven stage/curriculum defaults.
+  - Make: `stage-b-replay-mix`, `train-nllb-Bp-h200`.
+  - Tests: `tests/training/test_subsample.py` (90/10 counts, roles, seed determinism, assignment-dup exclusion).
+  - Docs: `docs/TRAINING_STRATEGY.md` §2.2 updated (pure B = failed ablation; B' = recommended specialize path).
+  - **Run:** `nllb600_B_Bp_h200_Bp_ddp2_20260727T011740Z` (best step 100, ~278s DDP2). Full test: I 22.22/49.41; MILPaC 33.82/54.84; Anuvaad 43.46/62.51.
+  - **vs A2:** E_milpac chrF++ drop 1.62 (≤2.0 pass); I chrF++ −0.25; Anuvaad −2.32. **vs pure B:** large E recovery. **Production remains A2.** Report: `data/analysis/nllb600_Bp_h200_best_report.json`; dual-policy table updated.
+
+- **Technical process log site** (`story/`): dense HTML log (tables, deltas, run IDs) covering OCR bake-off, pipeline, Stage A, dual eval, full SPM v1/v2 benches, dual-track MT (ZS/A1/A2/B/C1c), failures, 26 decisions, artifacts. Open `story/index.html`.
+
+- **Track C1c NLLB vocab-extend experiments + dual-policy close** (DESIGN_DECISIONS §26, `docs/EXPERIMENTS.md` §5.2):
+  - **v1 bulk (ablation):** `vocab_extend_nllb.py` +~8k raw SPM pieces; full `embed_tokens` via `modules_to_save`. Model `data/models/nllb600_c1c_sp_ext`. Run `nllb600_A_A1_c1c_h200_ddp2_20260726T225043Z`. Full test: I 6.38/24.86, MILPaC 10.66/28.63, Anuvaad 15.65/34.35.
+  - **v2 careful (primary C recipe):** `vocab_extend_nllb_v2.py` -- surface forms only if NLLB fragments; reject protected-substring / probe regression (e.g. `न्यायालय` stays single); +1500 -> vocab 257669; mean-init from base encode; LoRA + grad mask `new_embed_start`. Config `training_c1c_v2_h200.yaml` (DDP2, global batch 32). Scoreable run `…c1c_v2…234856Z` (best step 1000, dev primary 53.6). Full test: I 17.79/43.86, MILPaC 28.20/49.78, Anuvaad 37.64/58.46.
+  - **Decision:** production dual-policy remains **Track D A2** (`…A2…212958Z/best_primary`). C1c v2 loses to zero-shot and A2 on all three suites; v1 is a failed ablation. C1c does not replace Track D on this budget.
+  - Reports: `data/analysis/nllb600_c1c_v{1,2}_h200_best_report.json`; `final_dual_policy_report.json` updated with C1c scores + decision text.
+
+### Fixed
+
+- **C1c v2 emb rows not in PEFT adapter:** with `modules_to_save=null`, grad-mask-trained emb rows were live-only and lost at save (adapter ~12MB LoRA-only). `_save_peft` now writes `new_embed_rows.pt`; `apply_new_embed_rows` on resume/eval (`zero_shot_nllb` + train). First DDP v2 run discarded; retrain before scoring.
+
+### Added (earlier)
+
+- **Track D NLLB LoRA -- Hopper H200 / dual-GPU production path** (DESIGN_DECISIONS §23-25):
+  - `src/training/cuda_backend.py` -- bf16/fp16 dtype resolve; TF32 + float32 matmul precision high; cudnn benchmark; Flash/mem-efficient SDPA (math SDP off); fused AdamW; pin_memory + prefetch loaders; optional `torch.compile` helper (single-GPU only); Linux/macOS RSS + CUDA mem reporting.
+  - `src/training/dist_utils.py` -- `torchrun`/NCCL DDP init (`device_id`), rank/world helpers, unwrap DDP for save+generate, barriers, cleanup.
+  - `configs/training_h200.yaml` (+ `_A2` / `_B`) -- bf16, gradient_checkpointing off, `global_batch_size: 32` (16/device x 2), pad_to_fixed + pad_to_multiple_of 8, **`torch_compile: false`**, gen `eval_batch_size` 32, frozen `train_jsonl` for A1/A2.
+  - `train_nllb_lora.py` -- CUDA autocast, non_blocking H2D, DDP wrap (`broadcast_buffers=False`), DistributedSampler, rank-0 eval/save, stop-flag all_reduce; **forces compile off when world_size > 1** (NCCL/PEFT hang); `data.train_jsonl` freeze; batched gen eval; `backend_info.json`.
+  - `nllb_data.collate_nllb` -- pad-to-multiple-of-8 and fixed pad (labels -100 / attn mask 0; loss unchanged).
+  - Make: `train-nllb-A1-h200` -> `torchrun --standalone --nproc_per_node=2`.
+  - Tests: `tests/training/test_cuda_backend.py`, `test_nllb_data.py`.
+  - Remote: `/data/adalat_ai`, HF cache `/data/hf-cache`, venv torch 2.13+cu126; runs `nllb600_A_{A1,A2}_h200_*`, `nllb600_B_full_h200_*`.
+
 - **`docs/EXPERIMENTS.md`:** Consolidated research log (assignment pipeline, Stage A data, cross-model tokenizer survey, SPM v1/v2, joint vs HI-only, full-joint 16GB path, vocab ablation 41/48/64k, Track C freeze joint_full_41000, dual-track plan, artifact index, reproduce commands). README and DESIGN_DECISIONS link to it.
+
+- **NLLB architecture analysis for targeted LoRA:** `docs/NLLB_ARCHITECTURE.md` -- M2M100 12+12, d=1024, cross-attn as MT hinge; LoRA profiles `decoder_attn` (default Stage A, ~0.51% params), `cross_attn`, `decoder_full`, `last4_decoder`, `attn_all`. `train_nllb_lora.build_lora_config` path-filters modules (verified: decoder_attn has no encoder self-attn). `configs/training.yaml` peft.profile=`decoder_attn`.
+
+- **Track D NLLB LoRA training (MPS):** `src/training/subsample.py` (smoke/A1/A2 curriculum), `nllb_data.py`, `train_nllb_lora.py` (PEFT LoRA, AdamW+cosine, train/eval JSONL logs, best_primary checkpoints under `data/runs/`). Smoke run verified: 20 steps on 2k pairs, ~0.76% trainable. Make: `train-nllb-smoke`, `train-nllb-A1`, `stage-a-subsample-*`. Deps: peft, pyyaml.
+
+- **Training strategy (pre-implementation):** `docs/TRAINING_STRATEGY.md` + `configs/training.yaml` -- Stage A curriculum (smoke/A1/A2), LoRA defaults for NLLB-600M on MPS, dual-policy selection metrics, early-stop/anti-forgetting rules, run layout under `data/runs/`, success bars vs zero-shot baselines. DESIGN_DECISIONS §21.
+
+- **Track D zero-shot NLLB-600M (MPS):** `src/evaluation/zero_shot_nllb.py` + `metrics_mt.py`. EN->HI on Policy I_test / E_milpac_test / E_anuvaad_test. Final: I BLEU 18.78 chrF++ 44.62; MILPaC 34.14 / 55.12; Anuvaad 39.44 / 60.08. Hyps + `data/analysis/zero_shot_nllb_report.json`. Make: `zero-shot-nllb`.
+
+- **Dual eval policies (I + E):** `split_external_eval.py` carves held-out MILPaC (10% dev/test) and Anuvaad (1k dev / 3k test) from Stage A pool; writes `stage_a_train.jsonl` (~988k) + `data/external/parallel/eval/*`. `src/evaluation/eval_sets.py` loads suites and validates no train/eval pair leak. Make: `external-eval-split`. Stage A MT must use `stage_a_train`, not full pool.
+
+- **Local hardware + MLX policy:** `src/utils/profile_hardware.py` profiles Apple Silicon (chip, unified memory, MLX GPU smoke, PyTorch MPS). Writes `data/analysis/hardware_profile.json`. Docs: `docs/HARDWARE_MLX.md` -- M4 16GB local-only; MLX for small LLM LoRA; PyTorch MPS for NLLB/InLegalTrans enc-dec. `make profile-hardware`. requirements: `mlx`, `mlx-lm`, `torch`.
 
 - **Joint full vocab ablation 48k + 64k:** Trained `sentencepiece_legal_v2_joint_full_{48000,64000}` on same deduped joint corpus (profile=full). Held-out/test/all benches vs 41k in `data/analysis/tokenizer_vocab_size_ablation.json`. **Track C production freeze: `sentencepiece_legal_v2_joint_full_41000`** (generalization / emb size over max packing; 64k ablation only).
 
@@ -15,6 +74,20 @@
 - **External legal EN-HI ingest (Gate 9 T0)** (`src/preprocessing/ingest_external_parallel.py`): Downloads/processes MILPaC (Law-AI) and Anuvaad legal EN-HI (judiciary, HC/SUVAS, law commission, names dict, augmented, legal terms). Already-aligned pairs are mapped to project JSONL (`en_text`, `hi_text`, `source`, `doc_id`) and filtered with the same char-length ratio (0.3-3.0) and min-length rules as post-alignment QC; exact pair dedup. Outputs under `data/external/parallel/` including `stage_a_en_hi.jsonl` + `ingest_report.json`. Makefile: `make external-download`, `make external-ingest`. Tests: `tests/preprocessing/test_ingest_external_parallel.py`.
 
 ### Changed
+
+- **Zero-shot NLLB on H200:** Re-ran full I_test / E_milpac_test / E_anuvaad_test with `--device cuda --batch-size 32` (bf16 + SDPA). ~159s wall for 3307 pairs. BLEU/chrF++: I 18.85/44.74; MILPaC 34.28/55.22; Anuvaad 39.39/60.08 (matches prior MPS within noise). Report + hyps under `data/analysis/`; copy `zero_shot_nllb_report_h200.json`.
+
+- **A1 LoRA test eval + compare:** `zero_shot_nllb` supports `--adapters` / `--tag`. Scored H200 `best_primary` on same three test suites. Compare: `data/analysis/compare_zero_shot_vs_A1_h200.json`. Deltas vs zero-shot: I_test BLEU +2.82 / chrF++ +4.42; MILPaC +0.38 / +0.76; Anuvaad +5.78 / +4.25.
+
+- **Track D plan complete (T4+T5 on H200)** (DESIGN_DECISIONS §25):
+  - **A2:** `configs/training_h200_A2.yaml`, subsample `stage_a_A2_n150000.jsonl` (150k), resume A1 `best_primary`, LR 5e-5, 3000 steps DDP. Run `nllb600_A_A2_h200_A2_ddp2_20260726T212958Z`. Test: I 21.86/49.66; MILPaC 34.90/56.46; Anuvaad 45.80/64.83.
+  - **Stage B:** `configs/training_h200_B.yaml`, assignment `train.jsonl` (1136), resume A2 best, LR 3e-5, 800 steps. Run `nllb600_B_full_h200_B_ddp2_20260726T214744Z`. Test: I 23.10/48.89; MILPaC 30.92/51.22; Anuvaad 40.44/59.60.
+  - **Final table:** `data/analysis/final_dual_policy_report.json` (+ per-system reports/hyps under `data/analysis/`).
+  - **Recommend A2 best** for dual-policy use: B raises I_test BLEU but fails Stage B anti-forget (E_milpac chrF++ drop 5.24 > 2.0; Anuvaad also regresses).
+
+- **H200 DDP stability:** Disable `torch.compile` under DDP (Dynamo cannot trace NCCL; first loss_eval barrier aborted rank1). Config `torch_compile: false`; code forces off when `world_size>1`. Compile only on single-GPU path. Eval uses unwrapped module. `init_process_group(..., device_id=...)`. DDP `broadcast_buffers=False`. Workers 4.
+
+- **Track D train loop is multi-backend:** `train_nllb_lora` supports MPS (local default via `configs/training.yaml`) and CUDA/Hopper DDP (`configs/training_h200.yaml` + torchrun). Same Stage A curriculum, dual-policy eval, and LoRA profiles on both paths. DESIGN_DECISIONS §19 updated: local M4 remains default; optional remote H200 when VRAM is free (never kill co-resident vLLM without owner OK).
 
 - **External Stage A wired through docs/orchestrators:** `configs/preprocessing.yaml` documents `external_ingest` + paths/licenses/filters. `run_pipeline.py` steps/groups: `external_download`, `external_ingest`, groups `external` / `external_full`; `all` includes `external_ingest`. `scripts/reproduce_all.sh` runs Stage A ingest (with `--download` unless `--skip-downloads`). README quick-start and license notes updated.
 

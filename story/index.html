@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Adalat AI -- technical process log</title>
+  <meta name="description" content="EN-HI legal MT: pipeline, tokenizer experiments, dual-track results, production pick." />
+  <link rel="stylesheet" href="css/story.css" />
+</head>
+<body>
+  <div class="shell">
+    <aside class="toc" aria-label="TOC">
+      <p class="toc-brand">Adalat AI</p>
+      <p class="toc-sub">Technical log</p>
+      <div class="toc-progress" aria-hidden="true"><i id="toc-bar"></i></div>
+      <nav id="toc-nav"></nav>
+      <p class="toc-hint">Full experiment log. Numbers from data/analysis/*.json and DESIGN/EXPERIMENTS.</p>
+    </aside>
+
+    <div class="main">
+      <div class="main-inner">
+
+<header class="cover" id="cover">
+  <p class="cover-kicker">EN→HI legal MT · process + results</p>
+  <h1>Adalat AI</h1>
+  <p class="hi">Pipeline, tokenizer benches, dual-track train/eval, production checkpoint</p>
+  <div class="tldr">
+    <div class="k">Production</div>
+    <strong>NLLB-600M + Track D Stage A2 LoRA</strong>
+    <p>
+      I_test 21.86 BLEU / 49.66 chrF++ · E_milpac 34.90 / 56.46 · E_anuvaad 45.80 / 64.83
+      (beam 4, max 256, H200 batch 32 bf16). Run
+      <code style="color:#ccc">nllb600_A_A2_h200_A2_ddp2_20260726T212958Z/best_primary</code>.
+      Reject Stage B (E anti-forget fail). Reject C1c (below zero-shot).
+    </p>
+  </div>
+  <div class="read-path">
+    <a href="#s-setup">Setup</a>
+    <a href="#s-pipe">Pipeline</a>
+    <a href="#s-tok">Tokenizers</a>
+    <a href="#s-mt">MT results</a>
+    <a href="#s-prod">Production</a>
+  </div>
+  <p class="prose" style="margin-top:1rem;font-size:0.85rem;color:var(--ink-3)">
+    Hover / focus dotted terms (A1, A2, C1c, Track D, LoRA, …) for definitions.
+  </p>
+</header>
+
+<!-- SETUP -->
+<p class="act">1 · Problem and constraints</p>
+
+<section class="section" id="s-setup">
+  <h2>Problem</h2>
+  <div class="prose">
+    <p>
+      EN→HI translation for Indian court judgments. Two pillars: (1) Indic token efficiency,
+      (2) domain MT quality. Input: 30 parallel SC judgments (PDF + text). Output: reproducible
+      preprocess → train/eval → production adapter.
+    </p>
+  </div>
+  <h3>Constraints enforced</h3>
+  <div class="prose">
+    <ul>
+      <li>Document-level train/dev/test freeze (seed 42). No re-split.</li>
+      <li>SPM train text: Stage A + assignment train only. Never assignment dev/test docs.</li>
+      <li>MT train never uses assignment test. Stage A train excludes Policy E holdouts.</li>
+      <li>Final claims: beam 4, max_new 256, max_in 256, batch 32, bf16 H200.</li>
+      <li>Dual metrics: Policy I (assignment) + Policy E (external holdout).</li>
+      <li>Remote H200: no kill root vLLM without owner OK.</li>
+    </ul>
+  </div>
+  <h3>Hardware</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Env</th><th>Spec</th><th>Use</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Local</td>
+          <td>Apple M4 MacBook Air, 16 GB, MLX 0.32, torch 2.13 MPS</td>
+          <td>Preprocess, SPM, light MPS train, analysis</td>
+        </tr>
+        <tr>
+          <td>Remote</td>
+          <td>2× NVIDIA H200 ~141 GB, SM90, driver 580 / CUDA 13.0 toolkit 12.6</td>
+          <td>DDP train + full I/E decode when free</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="prose">
+    <p>
+      Host label says H100-class; nvidia-smi = H200. Often full of root vLLM (DeepSeek + Chandra).
+      Train path: <code>/data/adalat_ai</code>, HF cache <code>/data/hf-cache</code>.
+    </p>
+  </div>
+</section>
+
+<section class="section" id="s-data">
+  <h2>Corpus inventory (pre-align)</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Item</th><th>Value</th></tr></thead>
+      <tbody>
+        <tr><td>Parallel docs</td><td class="num">30</td></tr>
+        <tr><td>EN chars / words (clean scale)</td><td class="num">~259k / ~43.5k</td></tr>
+        <tr><td>HI chars / words</td><td class="num">~242k / ~45.7k</td></tr>
+        <tr><td>Case mix</td><td>~21 civil, ~9 criminal (SC appeals, mostly UP/Allahabad HC related)</td></tr>
+        <tr><td>Alignment status at start</td><td>Document-parallel only; line mismatch 29/30; numbered-para match 17/30</td></tr>
+        <tr><td>HI clean corruption</td><td>Docs 6,14,22,25,26: 0 Devanagari (all <code>?</code>)</td></tr>
+        <tr><td>BOM</td><td>25/30 legacy clean HI; 0/30 in preprocessed/</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <h3>Domain term counts (full EN clean, approx)</h3>
+  <div class="meta-row">
+    <span><b>Appellant</b> 376</span>
+    <span><b>Respondent</b> 227</span>
+    <span><b>High Court</b> 279</span>
+    <span><b>DD.MM.YYYY</b> 310</span>
+    <span><b>Section N</b> 182</span>
+    <span><b>Writ Petition</b> 87</span>
+    <span><b>impugned</b> 104</span>
+  </div>
+  <div class="callout warn">
+    <div class="label">Implication</div>
+    Expected post-align clean pairs ~1.5k–3.5k. External legal bitext required for Stage A FT.
+  </div>
+</section>
+
+<!-- PIPELINE -->
+<p class="act">2 · Preprocessing</p>
+
+<section class="section" id="s-ocr">
+  <h2>Hindi extraction: 5 backends</h2>
+  <div class="prose">
+    <p>
+      All 30 HI PDFs use custom font encoding (ligatures as glyph components). Text-layer tools
+      share the same broken stream. Doc 17 text layer transliterates (e.g. <code>Ekkuuh;</code>).
+    </p>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Tool</th><th>Type</th><th>Doc6 time</th><th>Dev chars</th><th>Issue</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>pdftotext</td><td>text-layer</td><td class="num">0.028s</td><td class="num">4657</td><td>ligature spacing broken</td></tr>
+        <tr><td>PyMuPDF</td><td>text-layer</td><td class="num">0.012s</td><td class="num">4657</td><td>control chars</td></tr>
+        <tr><td>pdfminer.six</td><td>text-layer</td><td class="num">0.088s</td><td class="num">4657</td><td><code>(cid:N)</code></td></tr>
+        <tr><td>pdfplumber</td><td>text-layer</td><td class="num">0.106s</td><td class="num">4657</td><td>same as pdfminer</td></tr>
+        <tr class="is-prod"><td><b>Tesseract hin psm6</b></td><td>OCR 300 DPI</td><td class="num">6.14s</td><td class="num">6027</td><td>rare diacritic OCR noise</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="prose">
+    <p>
+      Doc6 quality: pdftotext <code>प्रति वेद्य</code> / <code>सिसविवल</code> vs Tesseract
+      <code>प्रतिवेद्य</code> / <code>सिविल</code>. Ligature damage hits most conjuncts (~60–70%
+      common HI words). Chose OCR despite ~220× slower (~3 min / 30 docs on M4).
+    </p>
+    <p>
+      Result: 5 corrupted docs restored (+42,536 Devanagari chars). Full judgment text in
+      <code>data/hindi/preprocessed/</code> (headers+parties+body), not paragraph-only clean.
+    </p>
+  </div>
+  <div class="callout decision">
+    <div class="label">Decision</div>
+    <p>Default: <code>tesseract -l hin --psm 6</code>. Fallback: <code>--backend pdftotext</code>.</p>
+  </div>
+</section>
+
+<section class="section" id="s-skips">
+  <h2>Planned steps removed (measured)</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Step</th><th>Evidence</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Strip BOM</td>
+          <td>preprocessed/ 0/30 BOM; clean/ 25/30 BOM unused by pipeline</td>
+          <td>Skip</td>
+        </tr>
+        <tr>
+          <td>CRLF→LF</td>
+          <td>preprocessed/ 100% LF</td>
+          <td>Skip</td>
+        </tr>
+        <tr>
+          <td>OCR <code>li.</code>/<code>lili.</code>→ii/iii</td>
+          <td>0 hits clean+PDF raw; <code>L.</code> = judge initials, S.L.P., L.Rs.</td>
+          <td>Skip (regex would corrupt legal abbr)</td>
+        </tr>
+        <tr>
+          <td>Paragraph segmenter</td>
+          <td>Blank lines already mark paras after join/OCR</td>
+          <td>Skip</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="section" id="s-pipe">
+  <h2>Live pipeline</h2>
+  <div class="prose">
+    <p>
+      One module per step under <code>src/preprocessing/</code>. Stage to <code>preprocessed/</code>
+      (<code>--apply</code> to clean/). Orchestration: Makefile / <code>run_pipeline.py</code>.
+    </p>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Step</th><th>Module</th><th>Result / notes</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>OCR HI</td>
+          <td><code>reextract_pdfs.py</code></td>
+          <td>Tesseract default; Dev ratio check; all 30 PDFs</td>
+        </tr>
+        <tr>
+          <td>EN join</td>
+          <td><code>join_lines.py</code></td>
+          <td>17 hard-wrapped docs; non-blank lines 2819→1176 (−58%); proper-noun list 34 (data-driven)</td>
+        </tr>
+        <tr>
+          <td>Segment</td>
+          <td><code>segment_sentences.py</code></td>
+          <td>spaCy EN (protect Smt./Shri.); danda HI; 2495 EN + 7427 HI sentences</td>
+        </tr>
+        <tr>
+          <td>Align</td>
+          <td><code>align_sentences.py</code></td>
+          <td>LaBSE mutual-best; 1458 pairs (~49/doc)</td>
+        </tr>
+        <tr>
+          <td>Split</td>
+          <td><code>output_format.py</code></td>
+          <td>train 1136 / dev 132 / test 190; doc-level seed 42</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <h3>Alignment filters (assignment)</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Filter</th><th>Threshold</th><th>vs draft</th></tr></thead>
+      <tbody>
+        <tr><td>LaBSE sim</td><td class="num">≥ 0.5</td><td>draft 0.6–0.7; relaxed for recall</td></tr>
+        <tr><td>EN:HI char ratio</td><td class="num">0.3–3.0</td><td>draft 0.5–2.0</td></tr>
+        <tr><td>Min length</td><td>&gt; 3 chars</td><td>—</td></tr>
+        <tr><td>EN near-dedup</td><td>Jaccard &gt; 0.85 drops weaker</td><td>—</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <h3>Aligner ablation</h3>
+  <div class="prose">
+    <p>
+      BGE-M3 end-to-end: 1347 pairs. LaBSE: 1458. Kept LaBSE under same QC (data-starved assignment).
+    </p>
+  </div>
+  <div class="callout decision">
+    <div class="label">Frozen doc IDs</div>
+    <p>
+      train: 2,3,5,6,7,10–20,22,23,25–30 · dev: 8,9,24 · test: 1,4,21
+    </p>
+  </div>
+  <div class="pair">
+    <div class="side">
+      <div class="lang">I_test doc 1 · EN</div>
+      <div class="text">The Appellant worked as an officer of Regional Rural Bank Services with the Muzaffarnagar Kshetriya Gramin Bank (hereinafter, ‘the Bank’).</div>
+    </div>
+    <div class="side">
+      <div class="lang">HI ref</div>
+      <div class="text">अपीलार्थी ने मुजफ्फरनगर क्षेत्रिय ग्रामीण बैंक (इसके बाद 'बैंक' में क्षेत्रीय ग्रामीण</div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="s-stage-a">
+  <h2>Stage A external bitext</h2>
+  <div class="prose">
+    <p>
+      Module: <code>ingest_external_parallel.py</code>. Already-aligned sources; no re-OCR/LaBSE.
+      Filters: char ratio 0.3–3.0, min length, exact pair dedup.
+    </p>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Source</th><th>License</th><th>Role</th></tr></thead>
+      <tbody>
+        <tr><td>MILPaC (Law-AI)</td><td>CC BY-NC-SA 4.0</td><td>Clean legal EN-HI</td></tr>
+        <tr><td>Anuvaad legal EN-HI</td><td>CC BY 4.0</td><td>Scale (judiciary, HC/SUVAS, law commission, terms, …)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Artifact</th><th>Size</th></tr></thead>
+      <tbody>
+        <tr><td><code>stage_a_en_hi.jsonl</code></td><td class="num">~992,565 pairs</td></tr>
+        <tr><td><code>stage_a_train.jsonl</code> (after E holdout)</td><td class="num">~988k</td></tr>
+        <tr><td>A1 subsample</td><td class="num">80,000</td></tr>
+        <tr><td>A2 subsample</td><td class="num">150,000</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout warn">
+    <div class="label">Not Stage A bitext</div>
+    Prarabdha SFT dump: mono/Q&amp;A style. Used only for SPM v1 mono HI. Not MT pairs.
+  </div>
+</section>
+
+<section class="section" id="s-eval">
+  <h2>Dual eval policies</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Policy</th><th>Sets</th><th>n (test)</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td>I</td><td>assignment test docs 1,4,21</td><td class="num">190</td><td>Assignment metric</td></tr>
+        <tr><td>E milpac</td><td>10% held-out MILPaC</td><td class="num">117</td><td>Clean legal holdout</td></tr>
+        <tr><td>E anuvaad</td><td>3k held-out Anuvaad</td><td class="num">3000</td><td>Scale legal holdout</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="prose">
+    <p>
+      Train-time gen eval also uses I_dev, E_milpac_dev, Anuvaad dev sample (cap 200) with
+      weighted primary chrF++ (Stage A: E_milpac 0.5, Anuvaad 0.3, I 0.2).
+    </p>
+    <p>
+      Stage B anti-forget rule vs A2: E_milpac chrF++ drop limit 2.0; I_test chrF++ should not fall.
+    </p>
+  </div>
+  <div class="callout decision">
+    <div class="label">Decode (all final claims)</div>
+    <p>beam=4 · max_new=256 · max_in=256 · batch=32 · bf16 H200</p>
+  </div>
+</section>
+
+<!-- TOKENIZERS -->
+<p class="act">3 · Tokenizers</p>
+
+<section class="section" id="s-tok">
+  <h2>Cross-model survey</h2>
+  <div class="prose">
+    <p>
+      Bench: assignment pairs; chars/token, HI/EN ratio, Dev vocab presence.
+      Families: SentencePiece Unigram, multilingual BPE (o200k, NLLB), byte-level BPE (Llama-line).
+    </p>
+    <p>
+      Result: byte-level BPE weak (often 0 Dev tokens, UTF-8 byte fallback, ~1.1–2.7× HI cost).
+      Multilingual BPE with Dev pieces OK. Domain Unigram SP strong on legal HI.
+      Note: “BPE bad” is wrong; <b>byte-level / Dev-blind BPE</b> is the failure mode.
+    </p>
+  </div>
+</section>
+
+<section class="section" id="s-spm-v1">
+  <h2>SPM v1 (Prarabdha mono HI)</h2>
+  <div class="prose">
+    <p>
+      ~14M chars Dev-filtered HI. Unigram, character_coverage=1.0. Vocab 16k / 32k / 41k.
+      Paths: <code>sentencepiece_{16000,32000,41000}.model</code>. Not overwritten by v2.
+    </p>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Model</th><th>EN c/t</th><th>HI c/t</th><th>HI/EN</th><th>Total tok</th><th>Dev pieces</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>v1 SP 16k</td>
+          <td class="num">4.18</td><td class="num">3.47</td><td class="num">0.758</td>
+          <td class="num">13395</td><td class="num">5903</td>
+        </tr>
+        <tr>
+          <td>v1 SP 32k</td>
+          <td class="num">4.52</td><td class="num">3.81</td><td class="num">0.748</td>
+          <td class="num">12316</td><td class="num">13014</td>
+        </tr>
+        <tr>
+          <td>v1 SP 41k</td>
+          <td class="num">4.63</td><td class="num">3.95</td><td class="num">0.739</td>
+          <td class="num">11965</td><td class="num">16840</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="prose">
+    <p>Eval: held_out assignment dev+test, n=322 pairs. Source: <code>tokenizer_metrics_v2.json</code>.</p>
+  </div>
+</section>
+
+<section class="section" id="s-spm-v2">
+  <h2>SPM v2 + vocab-size ablation</h2>
+  <div class="prose">
+    <p>
+      Corpus: Stage A EN+HI lines + assignment train only (firewall in code).
+      Joint ~1.99M lines / 291M chars; HI ~994k / 139M; joint dedup ~2% exact dups.
+      Full joint Unigram on 16GB: dedupe + max line 4096 + seed 250k + train_extremely_large_corpus.
+    </p>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Model (held_out n=322)</th><th>EN c/t</th><th>HI c/t</th><th>HI/EN</th><th>Total tok</th><th>Dev pieces</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>v2 hi 32k</td>
+          <td class="num">2.90</td><td class="num">4.43</td><td class="num">0.412</td>
+          <td class="num">15518</td><td class="num">24155</td>
+        </tr>
+        <tr>
+          <td>v2 hi 41k</td>
+          <td class="num">3.07</td><td class="num">4.46</td><td class="num">0.434</td>
+          <td class="num">14880</td><td class="num">30095</td>
+        </tr>
+        <tr>
+          <td>v2 joint 32k (sample)</td>
+          <td class="num">4.95</td><td class="num">4.32</td><td class="num">0.722</td>
+          <td class="num">11082</td><td class="num">12733</td>
+        </tr>
+        <tr>
+          <td>v2 joint 41k (sample)</td>
+          <td class="num">4.99</td><td class="num">4.34</td><td class="num">0.724</td>
+          <td class="num">11004</td><td class="num">15971</td>
+        </tr>
+        <tr class="is-prod">
+          <td><b>v2 joint_full 41k</b></td>
+          <td class="num">4.99</td><td class="num">4.37</td><td class="num">0.720</td>
+          <td class="num">10978</td><td class="num">16217</td>
+        </tr>
+        <tr>
+          <td>v2 joint_full 48k</td>
+          <td class="num">5.01</td><td class="num">4.38</td><td class="num">0.721</td>
+          <td class="num">10937</td><td class="num">18524</td>
+        </tr>
+        <tr>
+          <td>v2 joint_full 64k</td>
+          <td class="num">5.07</td><td class="num">4.42</td><td class="num">0.722</td>
+          <td class="num">10819</td><td class="num">23742</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="prose">
+    <p>
+      HI-only: best HI packing, worst EN fragmentation (HI/EN ~0.41–0.43). Joint required for MT.
+      Packing winner by total tokens: joint_full 64k. Production freeze: <b>joint_full 41k</b>
+      (smaller emb, less overfit risk; 41→64k ~1.4% fewer tokens only).
+    </p>
+  </div>
+  <div class="callout decision">
+    <div class="label">Track C0 freeze</div>
+    <p><code>data/models/tokenizers/sentencepiece_legal_v2_joint_full_41000.model</code></p>
+  </div>
+</section>
+
+<!-- DUAL TRACK PLAN -->
+<p class="act">4 · Dual-track plan</p>
+
+<section class="section" id="s-tracks">
+  <h2>Tracks</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Track</th><th>Definition</th><th>Outcome</th></tr></thead>
+      <tbody>
+        <tr class="is-prod">
+          <td><b>D Defaults</b></td>
+          <td>NLLB-600M native tok; zero-shot → A1 → A2 → B LoRA</td>
+          <td>Production = A2</td>
+        </tr>
+        <tr>
+          <td><b>C Custom vocab</b></td>
+          <td>C0 SPM freeze; C1a from-scratch / C1c vocab-extend</td>
+          <td>C1a stopped; C1c loses full test</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <h3>C1 options</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>ID</th><th>Approach</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td>C1c</td><td>Vocab-extend NLLB + LoRA</td><td>Run (v1 bulk fail, v2 careful fail vs ZS)</td></tr>
+        <tr><td>C1b</td><td>Emb resize small pretrained → custom SPM</td><td>Not run</td></tr>
+        <tr><td>C1a</td><td>Enc-dec from scratch + joint_full_41000</td><td>Scaffolded; H200 start stopped (weak vs NLLB priors @80k)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <h3>Train contract (Track D)</h3>
+  <div class="prose">
+    <ul>
+      <li>Model: <code>facebook/nllb-200-distilled-600M</code>, eng_Latn→hin_Deva</li>
+      <li>PEFT: LoRA r=16 α=32 dropout 0.05, profile <code>decoder_attn</code> (~0.5% params)</li>
+      <li>A1: 80k, 3000 steps, LR 1e-4; A2: 150k resume A1, LR 5e-5; B: 1136 resume A2, 800 steps, LR 3e-5</li>
+      <li>H200: global batch 32 (16×2), bf16, TF32, Flash SDPA, pad fixed mult 8, compile off under DDP</li>
+      <li>Compile+DDP hung after first loss_eval (NCCL); forced compile off when world&gt;1</li>
+    </ul>
+  </div>
+</section>
+
+<!-- MT RESULTS -->
+<p class="act">5 · MT results (full test)</p>
+
+<section class="section" id="s-mt">
+  <h2>Full dual-policy scoreboard</h2>
+  <p class="when">beam 4 · max 256 · H200 batch 32 bf16</p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>System</th>
+          <th>I BLEU</th><th>I chrF++</th>
+          <th>MILPaC B</th><th>MILPaC C</th>
+          <th>Anuvaad B</th><th>Anuvaad C</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Zero-shot NLLB</td>
+          <td class="num">18.85</td><td class="num">44.74</td>
+          <td class="num">34.28</td><td class="num">55.22</td>
+          <td class="num">39.39</td><td class="num">60.08</td>
+        </tr>
+        <tr>
+          <td>D A1 best</td>
+          <td class="num">21.67</td><td class="num">49.16</td>
+          <td class="num">34.66</td><td class="num">55.98</td>
+          <td class="num">45.17</td><td class="num">64.33</td>
+        </tr>
+        <tr class="is-prod">
+          <td><b>D A2 best</b></td>
+          <td class="num">21.86</td><td class="num">49.66</td>
+          <td class="num">34.90</td><td class="num">56.46</td>
+          <td class="num">45.80</td><td class="num">64.83</td>
+        </tr>
+        <tr>
+          <td>D B best</td>
+          <td class="num">23.10</td><td class="num">48.89</td>
+          <td class="num neg">30.92</td><td class="num neg">51.22</td>
+          <td class="num neg">40.44</td><td class="num neg">59.60</td>
+        </tr>
+        <tr>
+          <td>C1c v2 careful A1</td>
+          <td class="num neg">17.79</td><td class="num neg">43.86</td>
+          <td class="num neg">28.20</td><td class="num neg">49.78</td>
+          <td class="num neg">37.64</td><td class="num neg">58.46</td>
+        </tr>
+        <tr>
+          <td>C1c v1 bulk A1</td>
+          <td class="num neg">6.38</td><td class="num neg">24.86</td>
+          <td class="num neg">10.66</td><td class="num neg">28.63</td>
+          <td class="num neg">15.65</td><td class="num neg">34.35</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="bar-grid" id="bar-i"></div>
+</section>
+
+<section class="section" id="s-zs">
+  <h2>Zero-shot</h2>
+  <div class="prose">
+    <p>
+      MPS then H200 re-decode. H200 wall ~159s for 3307 pairs. Matches MPS within noise.
+      Report: <code>zero_shot_nllb_report(_h200).json</code>.
+    </p>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Suite</th><th>n</th><th>BLEU</th><th>chrF++</th></tr></thead>
+      <tbody>
+        <tr><td>I_test</td><td class="num">190</td><td class="num">18.85</td><td class="num">44.74</td></tr>
+        <tr><td>E_milpac_test</td><td class="num">117</td><td class="num">34.28</td><td class="num">55.22</td></tr>
+        <tr><td>E_anuvaad_test</td><td class="num">3000</td><td class="num">39.39</td><td class="num">60.08</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="section" id="s-a1">
+  <h2>Track D · Stage A1</h2>
+  <div class="prose">
+    <p>
+      Data: A1 80k (MILPaC + Anuvaad prefer; judiciary cap). Steps 3000, LR 1e-4, DDP×2.
+      Run: <code>nllb600_A_A1_h200_ddp2_20260726T204933Z</code>, best_primary step 3000.
+      Wall ~671s after compile-off fix. First DDP run hung @ loss_eval 150 with torch.compile.
+    </p>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Suite</th><th>BLEU</th><th>chrF++</th><th>Δ vs ZS BLEU</th><th>Δ chrF++</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>I_test</td>
+          <td class="num">21.67</td><td class="num">49.16</td>
+          <td class="num pos">+2.82</td><td class="num pos">+4.42</td>
+        </tr>
+        <tr>
+          <td>E_milpac_test</td>
+          <td class="num">34.66</td><td class="num">55.98</td>
+          <td class="num pos">+0.38</td><td class="num pos">+0.76</td>
+        </tr>
+        <tr>
+          <td>E_anuvaad_test</td>
+          <td class="num">45.17</td><td class="num">64.33</td>
+          <td class="num pos">+5.78</td><td class="num pos">+4.25</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout worked">
+    <div class="label">Pass</div>
+    Clears zero-shot on all three suites. Compare JSON: <code>compare_zero_shot_vs_A1_h200.json</code>.
+  </div>
+</section>
+
+<section class="section" id="s-a2">
+  <h2>Track D · Stage A2</h2>
+  <div class="prose">
+    <p>
+      Data: A2 150k. Resume A1 best. LR 5e-5, 3000 steps DDP.
+      Run: <code>nllb600_A_A2_h200_A2_ddp2_20260726T212958Z</code>.
+    </p>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Suite</th><th>BLEU</th><th>chrF++</th><th>Δ vs A1 BLEU</th><th>Δ chrF++</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>I_test</td>
+          <td class="num">21.86</td><td class="num">49.66</td>
+          <td class="num">+0.19</td><td class="num">+0.50</td>
+        </tr>
+        <tr>
+          <td>E_milpac_test</td>
+          <td class="num">34.90</td><td class="num">56.46</td>
+          <td class="num">+0.24</td><td class="num">+0.48</td>
+        </tr>
+        <tr>
+          <td>E_anuvaad_test</td>
+          <td class="num">45.80</td><td class="num">64.83</td>
+          <td class="num">+0.63</td><td class="num">+0.50</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout decision">
+    <div class="label">Best dual-policy point (Track D)</div>
+    <p>Production checkpoint. vs ZS: I +3.01 BLEU / +4.92 chrF++; MILPaC +0.62 / +1.24; Anuvaad +6.41 / +4.75.</p>
+  </div>
+</section>
+
+<section class="section" id="s-b">
+  <h2>Track D · Stage B</h2>
+  <div class="prose">
+    <p>
+      Data: assignment train 1136. Resume A2 best. LR 3e-5, 800 steps.
+      Run: <code>nllb600_B_full_h200_B_ddp2_20260726T214744Z</code>.
+    </p>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Suite</th><th>BLEU</th><th>chrF++</th><th>Δ vs A2 BLEU</th><th>Δ chrF++</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>I_test</td>
+          <td class="num">23.10</td><td class="num">48.89</td>
+          <td class="num pos">+1.24</td><td class="num neg">−0.77</td>
+        </tr>
+        <tr>
+          <td>E_milpac_test</td>
+          <td class="num">30.92</td><td class="num">51.22</td>
+          <td class="num neg">−3.98</td><td class="num neg">−5.24</td>
+        </tr>
+        <tr>
+          <td>E_anuvaad_test</td>
+          <td class="num">40.44</td><td class="num">59.60</td>
+          <td class="num neg">−5.36</td><td class="num neg">−5.23</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout failed">
+    <div class="label">Fail Stage B constraints</div>
+    I chrF++ not ≥ A2 (−0.77). E_milpac chrF drop 5.24 &gt; limit 2.0. Anuvaad also −5.2 chrF.
+    Only clear win: I BLEU. Keep as ablation. Needs E-replay mix if revisited.
+  </div>
+</section>
+
+<section class="section" id="s-c1c">
+  <h2>Track C1c · vocab-extend</h2>
+  <h3>v1 bulk</h3>
+  <div class="prose">
+    <p>
+      <code>vocab_extend_nllb.py</code>: +~8k raw SPM piece strings.
+      Full <code>embed_tokens</code> via <code>modules_to_save</code> + decoder_attn LoRA.
+      Model: <code>data/models/nllb600_c1c_sp_ext</code>.
+      Run: <code>nllb600_A_A1_c1c_h200_ddp2_20260726T225043Z</code>, 3000 steps DDP, ~920s.
+      Dev best primary ~28.7 @ step 500; later ~25. Failure mode: splits good NLLB singles; emb unstable.
+    </p>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Suite</th><th>BLEU</th><th>chrF++</th><th>Δ vs ZS chrF++</th></tr></thead>
+      <tbody>
+        <tr><td>I_test</td><td class="num">6.38</td><td class="num">24.86</td><td class="num neg">−19.88</td></tr>
+        <tr><td>E_milpac_test</td><td class="num">10.66</td><td class="num">28.63</td><td class="num neg">−26.59</td></tr>
+        <tr><td>E_anuvaad_test</td><td class="num">15.65</td><td class="num">34.35</td><td class="num neg">−25.73</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <h3>v2 careful</h3>
+  <div class="prose">
+    <p>
+      <code>vocab_extend_nllb_v2.py</code>: surface forms only if base fragments (≥2 pieces);
+      reject protected-substring / probe regression; +1500 tokens → vocab 257669;
+      mean-init from base encode; grad mask rows [256204:); LoRA + new emb only.
+      Model: <code>data/models/nllb600_c1c_sp_ext_v2</code>.
+    </p>
+    <p>
+      Checkpoint bug: PEFT with <code>modules_to_save=null</code> saved LoRA only (~12MB);
+      trained emb rows lost on reload. Fix: <code>new_embed_rows.pt</code> +
+      <code>apply_new_embed_rows</code>. Retrain:
+      <code>nllb600_A_A1_c1c_v2_h200_ddp2_20260726T234856Z</code>, best step 1000, dev primary 53.61.
+    </p>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Suite</th><th>BLEU</th><th>chrF++</th><th>Δ vs ZS B</th><th>Δ vs ZS C</th><th>Δ vs A2 C</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>I_test</td>
+          <td class="num">17.79</td><td class="num">43.86</td>
+          <td class="num neg">−1.06</td><td class="num neg">−0.88</td>
+          <td class="num neg">−5.80</td>
+        </tr>
+        <tr>
+          <td>E_milpac_test</td>
+          <td class="num">28.20</td><td class="num">49.78</td>
+          <td class="num neg">−6.08</td><td class="num neg">−5.44</td>
+          <td class="num neg">−6.68</td>
+        </tr>
+        <tr>
+          <td>E_anuvaad_test</td>
+          <td class="num">37.64</td><td class="num">58.46</td>
+          <td class="num neg">−1.75</td><td class="num neg">−1.62</td>
+          <td class="num neg">−6.37</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout failed">
+    <div class="label">Result</div>
+    v2 loses to zero-shot on all suites after A1 budget. Methodology OK; quality fail.
+    v1 is negative ablation only.
+  </div>
+</section>
+
+<!-- PRODUCTION -->
+<p class="act">6 · Production and decisions</p>
+
+<section class="section" id="s-prod">
+  <h2>Production pick</h2>
+  <div class="callout decision">
+    <div class="label">Ship</div>
+    <p>
+      <strong>Track D A2 best_primary</strong> ·
+      <code>nllb600_A_A2_h200_A2_ddp2_20260726T212958Z/checkpoints/best_primary</code> ·
+      base <code>facebook/nllb-200-distilled-600M</code>
+    </p>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Rejected</th><th>Reason</th></tr></thead>
+      <tbody>
+        <tr><td>Stage B</td><td>E_milpac chrF −5.24 (limit 2.0); I chrF −0.77 vs A2</td></tr>
+        <tr><td>C1c v2</td><td>Below zero-shot on I and E</td></tr>
+        <tr><td>C1c v1</td><td>Bulk extend destroys backbone</td></tr>
+        <tr><td>C1a from-scratch</td><td>Stopped; 80k insufficient vs NLLB priors</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <h3>Not run (optional later)</h3>
+  <div class="prose">
+    <ul>
+      <li>COMET / CometKiwi / legal error panel</li>
+      <li>InLegalTrans zero-shot / LoRA</li>
+      <li>C1b emb-resize</li>
+      <li>C1c-A2 resume / longer emb warm-up</li>
+      <li>Stage B with 90/10 assignment+A2 replay</li>
+      <li>DPO / QE re-rank</li>
+    </ul>
+  </div>
+</section>
+
+<section class="section" id="s-design">
+  <h2>Design decisions (26)</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>§</th><th>Choice</th><th>Rationale (short)</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>Tesseract OCR HI</td><td>Text-layer ligature damage worse than OCR noise</td></tr>
+        <tr><td>2–5</td><td>Skip BOM/CRLF/li./para</td><td>No evidence on live path; li. regex false positives</td></tr>
+        <tr><td>6</td><td>preprocessed/ staging</td><td>No blind overwrite of originals</td></tr>
+        <tr><td>7</td><td>One file per step</td><td>Named by function, not step N</td></tr>
+        <tr><td>8</td><td>EN join + proper nouns</td><td>Hard wraps real; 34 nouns data-driven</td></tr>
+        <tr><td>9</td><td>spaCy EN + danda HI</td><td>Legal EN abbr; HI punctuation</td></tr>
+        <tr><td>10</td><td>LaBSE + filters</td><td>1458 &gt; BGE-M3 1347 under same QC</td></tr>
+        <tr><td>11</td><td>Doc-level split seed 42</td><td>No judgment leakage</td></tr>
+        <tr><td>12–14</td><td>Dev ratio / tests / PYTHONPATH</td><td>Simple conventions</td></tr>
+        <tr><td>15</td><td>Tokenizer survey</td><td>Byte-level BPE weak; domain SP strong</td></tr>
+        <tr><td>16</td><td>Orchestrator = live modules only</td><td>No phantom train/eval targets</td></tr>
+        <tr><td>17</td><td>Stage A ingest filters only</td><td>Already aligned; no re-OCR</td></tr>
+        <tr><td>18</td><td>SPM firewall + joint_full 41k</td><td>Joint for MT; 41k emb/overfit tradeoff</td></tr>
+        <tr><td>19</td><td>M4 default; H200 optional</td><td>Same experiment contract</td></tr>
+        <tr><td>20</td><td>Dual policy I+E</td><td>Catch assignment overfit</td></tr>
+        <tr><td>21</td><td>Train strategy pre-code</td><td>Curriculum + selection metric</td></tr>
+        <tr><td>22</td><td>LoRA decoder_attn</td><td>MT hinge; ~0.5% params</td></tr>
+        <tr><td>23–24</td><td>H200 bf16 DDP, no compile</td><td>Speed; compile hung NCCL</td></tr>
+        <tr><td>25</td><td>Ship A2 not B</td><td>B fails E anti-forget</td></tr>
+        <tr><td>26</td><td>C1c over C1a; still ship D A2</td><td>Extend method OK; scores lose</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="section" id="s-failures">
+  <h2>Failures / traps (log)</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Item</th><th>What happened</th><th>Fix / status</th></tr></thead>
+      <tbody>
+        <tr><td>pdftotext for HI</td><td>Ligature spacing destruction</td><td>Tesseract</td></tr>
+        <tr><td>Naive li. OCR fix</td><td>Would corrupt S.L.P. / judge initials</td><td>Never ship</td></tr>
+        <tr><td>HI-only SPM for MT</td><td>HI/EN ~0.41–0.43; EN fragmented</td><td>Joint freeze</td></tr>
+        <tr><td>torch.compile + DDP</td><td>Hang after loss_eval @150, NCCL abort</td><td>compile off world&gt;1</td></tr>
+        <tr><td>Stage B no replay</td><td>I BLEU up, E chrF −5+</td><td>Ablation only</td></tr>
+        <tr><td>C1c bulk +8k</td><td>Test I chrF 24.9</td><td>Ablation</td></tr>
+        <tr><td>C1c emb not saved</td><td>PEFT LoRA-only adapter; emb lost</td><td>new_embed_rows.pt + retrain</td></tr>
+        <tr><td>C1c v2 careful</td><td>Below zero-shot all suites</td><td>Not production</td></tr>
+        <tr><td>C1a from-scratch</td><td>Weak path @80k</td><td>Stopped</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="section" id="s-artifacts">
+  <h2>Artifacts</h2>
+  <div class="artifacts">
+    <div class="a"><code>data/processed/{train,dev,test}.jsonl</code><span class="role">1458 split</span></div>
+    <div class="a"><code>data/external/parallel/stage_a_train.jsonl</code><span class="role">~988k train</span></div>
+    <div class="a"><code>data/external/parallel/eval/*</code><span class="role">E holdouts</span></div>
+    <div class="a"><code>data/models/tokenizers/sentencepiece_legal_v2_joint_full_41000.model</code><span class="role">C0 freeze</span></div>
+    <div class="a"><code>data/models/nllb600_c1c_sp_ext{,_v2}/</code><span class="role">C1c bases</span></div>
+    <div class="a"><code>data/runs/...A2.../best_primary</code><span class="role">production LoRA</span></div>
+    <div class="a"><code>data/analysis/zero_shot_nllb_report*.json</code><span class="role">ZS scores</span></div>
+    <div class="a"><code>data/analysis/nllb600_{A1,A2,B}_h200_best_report.json</code><span class="role">D tests</span></div>
+    <div class="a"><code>data/analysis/nllb600_c1c_v{1,2}_h200_best_report.json</code><span class="role">C tests</span></div>
+    <div class="a"><code>data/analysis/compare_zero_shot_vs_A1_h200.json</code><span class="role">A1 deltas</span></div>
+    <div class="a"><code>data/analysis/final_dual_policy_report.json</code><span class="role">closed dump</span></div>
+    <div class="a"><code>data/analysis/tokenizer_metrics_v2.json</code><span class="role">SPM bench</span></div>
+    <div class="a"><code>data/analysis/tokenizer_vocab_size_ablation.json</code><span class="role">41/48/64k</span></div>
+    <div class="a"><code>data/analysis/hardware_profile.json</code><span class="role">M4 profile</span></div>
+    <div class="a"><code>DESIGN_DECISIONS.md</code> · <code>docs/EXPERIMENTS.md</code> · <code>CHANGELOG.md</code><span class="role">source of truth</span></div>
+  </div>
+  <details class="depth">
+    <summary>Reproduce entry points</summary>
+    <div class="depth-body">
+      <p><code>make preprocess</code> · <code>make external-ingest</code> · <code>make external-eval-split</code></p>
+      <p><code>make tokenizer-c0</code> · <code>make tokenizer-spm-v2-full-joint</code> · <code>make tokenizer-bench</code></p>
+      <p><code>PYTHONPATH=. python3 -m src.evaluation.zero_shot_nllb --device cuda --batch-size 32</code></p>
+      <p><code>torchrun --standalone --nproc_per_node=2 -m src.training.train_nllb_lora --config configs/training_h200.yaml --curriculum A1</code></p>
+      <p>Eval adapters: <code>--adapters …/best_primary --tag … --no-resume</code>; C1c uses extended <code>--model data/models/nllb600_c1c_sp_ext_v2</code>.</p>
+    </div>
+  </details>
+</section>
+
+<section class="section" id="s-close">
+  <h2>Summary</h2>
+  <div class="prose">
+    <ol>
+      <li>OCR over text-layer for HI PDFs (measured).</li>
+      <li>Cut unneeded clean steps (measured).</li>
+      <li>LaBSE + filters → 1458 doc-level pairs.</li>
+      <li>Stage A ~993k legal bitext; dual I/E holdouts.</li>
+      <li>SPM: joint_full 41k freeze; HI-only wrong for MT.</li>
+      <li>NLLB LoRA A1→A2 works; B forgets E.</li>
+      <li>C1c bulk fails; careful still &lt; zero-shot @ A1 budget.</li>
+      <li>Production: D A2 LoRA only.</li>
+    </ol>
+  </div>
+</section>
+
+<footer class="foot">
+  Numbers: data/analysis/* · DESIGN_DECISIONS.md · docs/EXPERIMENTS.md · CHANGELOG.md ·
+  docs/TRAINING_STRATEGY.md. No credentials. Open: story/index.html
+</footer>
+
+      </div>
+    </div>
+  </div>
+  <script src="js/story.js"></script>
+</body>
+</html>

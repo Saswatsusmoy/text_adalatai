@@ -1,0 +1,126 @@
+# Track C1c: NLLB-600M with legal SPM vocab extension + decoder_attn LoRA.
+# Base model path must be the expanded checkpoint from vocab_extend_nllb.py.
+# Same A1 data / dual eval as Track D for fair comparison.
+
+run:
+  track: C1c
+  stage: A
+  seed: 42
+  output_root: data/runs
+  tag: c1c_h200
+
+model:
+  id: data/models/nllb600_c1c_sp_ext
+  src_lang: eng_Latn
+  tgt_lang: hin_Deva
+  torch_dtype: bfloat16
+  gradient_checkpointing: false
+
+peft:
+  method: lora
+  profile: decoder_attn
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - out_proj
+  # train new legal token rows fully while LoRA adapts attention
+  modules_to_save:
+    - embed_tokens
+  bias: none
+  task_type: SEQ_2_SEQ_LM
+
+data:
+  stage_a_train: data/external/parallel/stage_a_train.jsonl
+  stage_b_train: data/processed/train.jsonl
+  train_jsonl: data/external/parallel/subsamples/stage_a_A1_n80000.jsonl
+  curriculum: A1
+  subsample:
+    seed: 42
+    smoke_n: 2000
+    A1_max_n: 80000
+    A2_max_n: 150000
+    prefer_sources:
+      - milpac_Acts
+      - milpac_CCI_FAQ
+      - milpac_IP
+      - anuvaad_hc_suvas
+      - anuvaad_law_commission
+      - anuvaad_judiciary
+    judiciary_cap_A1: 40000
+  max_source_length: 256
+  max_target_length: 256
+
+optim:
+  lr: 1.0e-4
+  lr_stage_b: 3.0e-5
+  weight_decay: 0.01
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  warmup_ratio: 0.05
+  scheduler: cosine
+  max_grad_norm: 1.0
+  label_smoothing: 0.1
+  fused_adamw: true
+
+train:
+  batch_size: 16
+  global_batch_size: 32
+  grad_accum_steps: 1
+  max_steps_stage_a: 3000
+  max_steps_stage_b: 800
+  log_every_steps: 20
+  eval_loss_every_steps: 150
+  eval_gen_every_steps: 500
+  save_every_steps: 500
+  early_stop_patience_evals: 5
+  num_workers: 4
+  pin_memory: true
+  prefetch_factor: 2
+  pad_to_fixed: true
+  pad_to_multiple_of: 8
+  torch_compile: false
+  ddp_find_unused_parameters: true
+  ddp_static_graph: false
+
+decode:
+  num_beams: 4
+  max_new_tokens: 256
+  match_zero_shot: true
+  eval_batch_size: 32
+
+eval:
+  zero_shot_report: data/analysis/zero_shot_nllb_report.json
+  policy_I_dev: data/processed/dev.jsonl
+  policy_I_test: data/processed/test.jsonl
+  policy_E_milpac_dev: data/external/parallel/eval/milpac_dev.jsonl
+  policy_E_milpac_test: data/external/parallel/eval/milpac_test.jsonl
+  policy_E_anuvaad_dev: data/external/parallel/eval/anuvaad_dev.jsonl
+  policy_E_anuvaad_test: data/external/parallel/eval/anuvaad_test.jsonl
+  anuvaad_dev_max_pairs: 200
+  selection:
+    stage_a_weights:
+      E_milpac_dev: 0.5
+      E_anuvaad_dev_sample: 0.3
+      I_dev: 0.2
+    stage_b_weights:
+      I_dev: 0.7
+      E_milpac_dev: 0.3
+
+monitoring:
+  log_grad_norm: true
+  log_memory: true
+  memory_warn_gb: 80.0
+  stop_on_nan: true
+
+hardware:
+  device_preference:
+    - cuda
+    - cpu
+  allow_tf32: true
+  cudnn_benchmark: true
+  prefer_flash_sdp: true
+  pick_most_free_gpu: false

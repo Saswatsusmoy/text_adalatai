@@ -36,3 +36,9 @@ SPM_V2_PRIMARY = (
     PROJECT_ROOT / 'data' / 'models' / 'tokenizers'
     / 'sentencepiece_legal_v2_joint_full_41000.model'
 )
+
+# Dual eval policies (see docs/EXPERIMENTS.md, split_external_eval.py)
+EXTERNAL_PARALLEL_DIR = DATA_DIR / 'external' / 'parallel'
+STAGE_A_ALL = EXTERNAL_PARALLEL_DIR / 'stage_a_en_hi.jsonl'
+STAGE_A_TRAIN = EXTERNAL_PARALLEL_DIR / 'stage_a_train.jsonl'
+EXTERNAL_EVAL_DIR = EXTERNAL_PARALLEL_DIR / 'eval'

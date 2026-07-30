@@ -1,0 +1,150 @@
+# Stage B' on 2x H200 -- assignment specialize WITH domain replay (anti-forget).
+# 90% assignment train + 10% A2 Stage A subsample. Resume A2 best adapters.
+# Same LoRA surface as A2 (resume continues decoder_attn r=16); lower LR / fewer steps.
+# Plan: DESIGN_DECISIONS Stage B' / docs/TRAINING_STRATEGY.md section 2.2.
+
+run:
+  track: D
+  stage: B
+  seed: 42
+  output_root: data/runs
+  tag: h200_Bp
+
+model:
+  id: facebook/nllb-200-distilled-600M
+  src_lang: eng_Latn
+  tgt_lang: hin_Deva
+  torch_dtype: bfloat16
+  gradient_checkpointing: false
+
+# Resume keeps A2 LoRA modules (r=16 decoder_attn). Profile below is documentation
+# only when adapters are loaded; it does not re-init LoRA.
+peft:
+  method: lora
+  profile: decoder_attn
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.1
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - out_proj
+  bias: none
+  task_type: SEQ_2_SEQ_LM
+
+resume:
+  # Remote H200 path is the same under /data/adalat_ai; override with --resume-adapters.
+  adapters: data/runs/nllb600_A_A2_h200_A2_ddp2_20260726T212958Z/checkpoints/best_primary
+
+data:
+  stage_a_train: data/external/parallel/stage_a_train.jsonl
+  stage_b_train: data/processed/train.jsonl
+  curriculum: Bp
+  # Frozen mix from make stage-b-replay-mix (seed 42). Rebuild if missing.
+  train_jsonl: data/external/parallel/subsamples/stage_b_Bp_a1136_r126_f0.9.jsonl
+  stage_b_replay:
+    enabled: true
+    pool: data/external/parallel/subsamples/stage_a_A2_n150000.jsonl
+    assignment_frac: 0.9
+    seed: 42
+  max_source_length: 256
+  max_target_length: 256
+  cache_dir: data/cache/tokenized
+
+optim:
+  lr: 1.0e-4
+  lr_stage_b: 2.0e-5
+  weight_decay: 0.01
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  warmup_ratio: 0.08
+  scheduler: cosine
+  max_grad_norm: 1.0
+  label_smoothing: 0.1
+  fused_adamw: true
+
+train:
+  batch_size: 16
+  global_batch_size: 32
+  grad_accum_steps: 1
+  max_steps_stage_a: 3000
+  max_steps_stage_b: 500
+  log_every_steps: 20
+  eval_loss_every_steps: 100
+  eval_gen_every_steps: 100
+  save_every_steps: 100
+  early_stop_patience_evals: 4
+  num_workers: 4
+  pin_memory: true
+  prefetch_factor: 2
+  pad_to_fixed: true
+  pad_to_multiple_of: 8
+  torch_compile: false
+  ddp_find_unused_parameters: true
+  ddp_static_graph: false
+
+decode:
+  num_beams: 4
+  max_new_tokens: 256
+  match_zero_shot: true
+  eval_batch_size: 32
+
+eval:
+  zero_shot_report: data/analysis/zero_shot_nllb_report.json
+  policy_I_dev: data/processed/dev.jsonl
+  policy_I_test: data/processed/test.jsonl
+  policy_E_milpac_dev: data/external/parallel/eval/milpac_dev.jsonl
+  policy_E_milpac_test: data/external/parallel/eval/milpac_test.jsonl
+  policy_E_anuvaad_dev: data/external/parallel/eval/anuvaad_dev.jsonl
+  policy_E_anuvaad_test: data/external/parallel/eval/anuvaad_test.jsonl
+  anuvaad_dev_max_pairs: 200
+  final_suites:
+    - I_test
+    - E_milpac_test
+    - E_anuvaad_test
+  micro_suites:
+    - I_dev
+    - E_milpac_dev
+    - E_anuvaad_dev_sample
+  primary_metric: chrfpp
+  selection:
+    stage_a_weights:
+      E_milpac_dev: 0.5
+      E_anuvaad_dev_sample: 0.3
+      I_dev: 0.2
+    stage_b_weights:
+      I_dev: 0.6
+      E_milpac_dev: 0.4
+    stage_b_max_drop_I_dev: 2.0
+    stage_b_max_drop_E_milpac_dev: 3.0
+
+monitoring:
+  log_grad_norm: true
+  log_memory: true
+  memory_warn_gb: 80.0
+  qualitative_probe_n: 12
+  qualitative_seed: 42
+  stop_on_nan: true
+
+hardware:
+  device_preference:
+    - cuda
+    - cpu
+  require_local: false
+  allow_tf32: true
+  cudnn_benchmark: true
+  prefer_flash_sdp: true
+  allow_fp16_reduced_precision_reduction: true
+  allow_bf16_reduced_precision_reduction: true
+  pick_most_free_gpu: false
+  notes: "Stage B' 90/10 assignment+A2 replay; resume A2 best; dual-policy E hard caps"
+
+success:
+  stage_a:
+    min_delta_I_test_chrfpp: 1.0
+    min_delta_E_milpac_chrfpp: 1.0
+    max_regression_E_anuvaad_chrfpp: 0.5
+  stage_b:
+    require_I_test_ge_stage_a: true
+    max_drop_E_milpac_vs_stage_a: 2.0

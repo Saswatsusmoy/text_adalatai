@@ -1,0 +1,81 @@
+{
+  "timestamp_utc": "2026-07-26T16:21:12.271503+00:00",
+  "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "python": "3.14.6",
+  "chip": "Apple M4",
+  "model_name": "MacBook Air",
+  "model_identifier": "Mac16,12",
+  "cpu_cores_reported": "proc 10:4:6:0",
+  "physical_cpu": "10",
+  "logical_cpu": "10",
+  "memory_bytes": 17179869184,
+  "memory_gb": 16.0,
+  "mlx": {
+    "installed": true,
+    "version": "0.32.0",
+    "default_device": "Device(gpu, 0)",
+    "matmul_smoke": true,
+    "matmul_sample": -21.02007293701172,
+    "mlx_lm_installed": true,
+    "mlx_lm_version": "0.31.3"
+  },
+  "torch": {
+    "installed": true,
+    "version": "2.13.0",
+    "mps_built": true,
+    "mps_available": true,
+    "cuda_available": false,
+    "mps_matmul_smoke": true,
+    "mps_matmul_shape": [
+      512,
+      512
+    ]
+  },
+  "recommendations": {
+    "training_location": "local_only",
+    "backend_primary": "mlx",
+    "backend_secondary": "pytorch_mps",
+    "track_d_models": [
+      {
+        "name": "NLLB-200-distilled-600M",
+        "path": "facebook/nllb-200-distilled-600M",
+        "backend": "pytorch_mps",
+        "role": "enc-dec MT baseline / Stage A-B LoRA if PEFT fits",
+        "fit_16gb": "comfortable_inference; light_ft_possible"
+      },
+      {
+        "name": "InLegalTrans-En2Indic-1B",
+        "path": "law-ai/InLegalTrans-En2Indic-1B",
+        "backend": "pytorch_mps",
+        "role": "legal MT baseline (HF seq2seq); not mlx-lm native",
+        "fit_16gb": "inference_ok; full_ft_risky; prefer_lora_or_freeze_encoder"
+      }
+    ],
+    "track_c_models": [
+      {
+        "name": "small_instruct_1b_to_3b_4bit",
+        "examples": [
+          "mlx-community/Llama-3.2-1B-Instruct-4bit",
+          "mlx-community/Qwen2.5-1.5B-Instruct-4bit",
+          "mlx-community/gemma-2-2b-it-4bit"
+        ],
+        "backend": "mlx_lm_lora",
+        "role": "instruction MT LoRA; custom SPM needs C1 emb work (harder on mlx-lm)",
+        "fit_16gb": "lora_ok_with_short_seq_and_batch_1"
+      }
+    ],
+    "max_batch_hint": 1,
+    "quantization": "4bit_preferred_for_7b_class",
+    "notes": [
+      "16GB unified: treat RAM+weights+activations as one pool; close browsers during train.",
+      "MLX-LM is strongest for decoder-only LLM LoRA, not a drop-in for NLLB/InLegalTrans enc-dec.",
+      "Track D seq2seq: use PyTorch MPS (or CPU fallback). Track D/C LLM path: use MLX-LM LoRA 4-bit 1B-3B.",
+      "Avoid 7B+ full FT on 16GB; 7B 4-bit LoRA may work at batch 1 short context only.",
+      "Custom SPM (joint_full_41000) pairs best with a model you control (small enc-dec or emb-resize path); mlx-lm uses the base LLM tokenizer unless you implement vocab surgery."
+    ],
+    "unified_memory_gb": 16.0,
+    "sequence_length_hint": 256,
+    "stage_a_subsample_hint": "Start with MILPaC + HC/SUVAS + 50k-100k judiciary lines before full 992k on 16GB."
+  }
+}

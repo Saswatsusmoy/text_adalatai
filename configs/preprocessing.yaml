@@ -76,6 +76,23 @@ paths:
   external_raw: data/external/raw/
   external_parallel: data/external/parallel/
   external_stage_a: data/external/parallel/stage_a_en_hi.jsonl
+  external_stage_a_train: data/external/parallel/stage_a_train.jsonl
+  external_eval_dir: data/external/parallel/eval/
+
+# Dual scoring policies (run: make external-eval-split)
+eval_policies:
+  policy_I:
+    name: internal_assignment
+    test: data/processed/test.jsonl
+    dev: data/processed/dev.jsonl
+    note: "Frozen doc-level; primary assignment score"
+  policy_E:
+    name: external_held_out
+    milpac_test: data/external/parallel/eval/milpac_test.jsonl
+    anuvaad_test: data/external/parallel/eval/anuvaad_test.jsonl
+    external_test: data/external/parallel/eval/external_test.jsonl
+    stage_a_train: data/external/parallel/stage_a_train.jsonl
+    note: "Never train MT on policy_E files; score every system on I and E"
 
 # Must match constants in src/preprocessing/align_sentences.py
 # (external ingest reuses char_ratio + min_text_length; no similarity)

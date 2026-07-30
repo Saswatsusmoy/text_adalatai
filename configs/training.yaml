@@ -1,0 +1,140 @@
+# Track D training defaults (NLLB LoRA on local M4 16GB).
+# Full strategy: docs/TRAINING_STRATEGY.md
+# Snapshot this file into data/runs/{run_id}/config.snapshot.yaml on every run.
+
+run:
+  track: D
+  stage: A  # A | B
+  seed: 42
+  output_root: data/runs
+
+model:
+  id: facebook/nllb-200-distilled-600M
+  src_lang: eng_Latn
+  tgt_lang: hin_Deva
+  torch_dtype: float16
+  gradient_checkpointing: true
+
+peft:
+  method: lora
+  # Architecture-aware profiles (see docs/NLLB_ARCHITECTURE.md)
+  # attn_all | decoder_attn | cross_attn | decoder_full | last4_decoder
+  profile: decoder_attn
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  # Used when profile=attn_all (suffix match); other profiles filter paths
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - out_proj
+  # Stage B override suggestion: profile cross_attn, r 8, dropout 0.1
+  bias: none
+  task_type: SEQ_2_SEQ_LM
+
+data:
+  stage_a_train: data/external/parallel/stage_a_train.jsonl
+  stage_b_train: data/processed/train.jsonl
+  # Curriculum tags: smoke | A1 | A2 | full
+  curriculum: A1
+  subsample:
+    seed: 42
+    smoke_n: 2000
+    A1_max_n: 80000
+    A2_max_n: 150000
+    prefer_sources:
+      - milpac_Acts
+      - milpac_CCI_FAQ
+      - milpac_IP
+      - anuvaad_hc_suvas
+      - anuvaad_law_commission
+      - anuvaad_judiciary
+    judiciary_cap_A1: 40000
+  max_source_length: 256
+  max_target_length: 256
+  cache_dir: data/cache/tokenized
+
+optim:
+  lr: 1.0e-4
+  lr_stage_b: 3.0e-5
+  weight_decay: 0.01
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  warmup_ratio: 0.05
+  scheduler: cosine
+  max_grad_norm: 1.0
+  label_smoothing: 0.1
+
+train:
+  batch_size: 1
+  grad_accum_steps: 16
+  # steps are optimizer steps after accumulation
+  max_steps_stage_a: 3000
+  max_steps_stage_b: 800
+  log_every_steps: 20
+  eval_loss_every_steps: 150
+  eval_gen_every_steps: 500
+  save_every_steps: 500
+  early_stop_patience_evals: 5
+
+decode:
+  num_beams: 4
+  max_new_tokens: 256
+  # must match zero-shot for fair compare
+  match_zero_shot: true
+
+eval:
+  zero_shot_report: data/analysis/zero_shot_nllb_report.json
+  policy_I_dev: data/processed/dev.jsonl
+  policy_I_test: data/processed/test.jsonl
+  policy_E_milpac_dev: data/external/parallel/eval/milpac_dev.jsonl
+  policy_E_milpac_test: data/external/parallel/eval/milpac_test.jsonl
+  policy_E_anuvaad_dev: data/external/parallel/eval/anuvaad_dev.jsonl
+  policy_E_anuvaad_test: data/external/parallel/eval/anuvaad_test.jsonl
+  # during training, cap expensive suites
+  anuvaad_dev_max_pairs: 200
+  final_suites:
+    - I_test
+    - E_milpac_test
+    - E_anuvaad_test
+  micro_suites:
+    - I_dev
+    - E_milpac_dev
+    - E_anuvaad_dev_sample
+  primary_metric: chrfpp
+  selection:
+    stage_a_weights:
+      E_milpac_dev: 0.5
+      E_anuvaad_dev_sample: 0.3
+      I_dev: 0.2
+    stage_b_weights:
+      I_dev: 0.7
+      E_milpac_dev: 0.3
+    # hard constraints (absolute chrF++ points)
+    stage_b_max_drop_I_dev: 2.0
+    stage_b_max_drop_E_milpac_dev: 3.0
+
+monitoring:
+  log_grad_norm: true
+  log_memory: true
+  memory_warn_gb: 14.0
+  qualitative_probe_n: 12
+  qualitative_seed: 42
+  stop_on_nan: true
+
+hardware:
+  device_preference:
+    - mps
+    - cpu
+  require_local: true
+  notes: "See docs/HARDWARE_MLX.md; no cloud required"
+
+success:
+  stage_a:
+    min_delta_I_test_chrfpp: 1.0
+    min_delta_E_milpac_chrfpp: 1.0
+    max_regression_E_anuvaad_chrfpp: 0.5
+  stage_b:
+    require_I_test_ge_stage_a: true
+    max_drop_E_milpac_vs_stage_a: 2.0

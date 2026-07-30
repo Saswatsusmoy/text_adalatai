@@ -1,0 +1,135 @@
+# Stage B on 2x H200 -- assignment specialize from best Stage A adapters.
+# Plan: docs/TRAINING_STRATEGY.md T5. Low LR, anti-forgetting via E_milpac watch.
+
+run:
+  track: D
+  stage: B
+  seed: 42
+  output_root: data/runs
+  tag: h200_B
+
+model:
+  id: facebook/nllb-200-distilled-600M
+  src_lang: eng_Latn
+  tgt_lang: hin_Deva
+  torch_dtype: bfloat16
+  gradient_checkpointing: false
+
+peft:
+  method: lora
+  profile: decoder_attn
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.1
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - out_proj
+  bias: none
+  task_type: SEQ_2_SEQ_LM
+
+data:
+  stage_a_train: data/external/parallel/stage_a_train.jsonl
+  stage_b_train: data/processed/train.jsonl
+  curriculum: full
+  max_source_length: 256
+  max_target_length: 256
+  cache_dir: data/cache/tokenized
+
+optim:
+  lr: 1.0e-4
+  lr_stage_b: 3.0e-5
+  weight_decay: 0.01
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  warmup_ratio: 0.08
+  scheduler: cosine
+  max_grad_norm: 1.0
+  label_smoothing: 0.1
+  fused_adamw: true
+
+train:
+  batch_size: 16
+  global_batch_size: 32
+  grad_accum_steps: 1
+  max_steps_stage_a: 3000
+  max_steps_stage_b: 800
+  log_every_steps: 20
+  eval_loss_every_steps: 100
+  eval_gen_every_steps: 200
+  save_every_steps: 200
+  early_stop_patience_evals: 4
+  num_workers: 4
+  pin_memory: true
+  prefetch_factor: 2
+  pad_to_fixed: true
+  pad_to_multiple_of: 8
+  torch_compile: false
+  ddp_find_unused_parameters: true
+  ddp_static_graph: false
+
+decode:
+  num_beams: 4
+  max_new_tokens: 256
+  match_zero_shot: true
+  eval_batch_size: 32
+
+eval:
+  zero_shot_report: data/analysis/zero_shot_nllb_report.json
+  policy_I_dev: data/processed/dev.jsonl
+  policy_I_test: data/processed/test.jsonl
+  policy_E_milpac_dev: data/external/parallel/eval/milpac_dev.jsonl
+  policy_E_milpac_test: data/external/parallel/eval/milpac_test.jsonl
+  policy_E_anuvaad_dev: data/external/parallel/eval/anuvaad_dev.jsonl
+  policy_E_anuvaad_test: data/external/parallel/eval/anuvaad_test.jsonl
+  anuvaad_dev_max_pairs: 200
+  final_suites:
+    - I_test
+    - E_milpac_test
+    - E_anuvaad_test
+  micro_suites:
+    - I_dev
+    - E_milpac_dev
+    - E_anuvaad_dev_sample
+  primary_metric: chrfpp
+  selection:
+    stage_a_weights:
+      E_milpac_dev: 0.5
+      E_anuvaad_dev_sample: 0.3
+      I_dev: 0.2
+    stage_b_weights:
+      I_dev: 0.7
+      E_milpac_dev: 0.3
+    stage_b_max_drop_I_dev: 2.0
+    stage_b_max_drop_E_milpac_dev: 3.0
+
+monitoring:
+  log_grad_norm: true
+  log_memory: true
+  memory_warn_gb: 80.0
+  qualitative_probe_n: 12
+  qualitative_seed: 42
+  stop_on_nan: true
+
+hardware:
+  device_preference:
+    - cuda
+    - cpu
+  require_local: false
+  allow_tf32: true
+  cudnn_benchmark: true
+  prefer_flash_sdp: true
+  allow_fp16_reduced_precision_reduction: true
+  allow_bf16_reduced_precision_reduction: true
+  pick_most_free_gpu: false
+  notes: "Stage B assignment train; resume Stage A best"
+
+success:
+  stage_a:
+    min_delta_I_test_chrfpp: 1.0
+    min_delta_E_milpac_chrfpp: 1.0
+    max_regression_E_anuvaad_chrfpp: 0.5
+  stage_b:
+    require_I_test_ge_stage_a: true
+    max_drop_E_milpac_vs_stage_a: 2.0

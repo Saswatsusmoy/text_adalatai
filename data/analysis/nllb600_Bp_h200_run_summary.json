@@ -1,0 +1,42 @@
+{
+  "run_id": "nllb600_B_Bp_h200_Bp_ddp2_20260727T011740Z",
+  "stage": "B",
+  "curriculum": "Bp",
+  "device": "cuda:0",
+  "world_size": 2,
+  "dtype": "bfloat16",
+  "torch_compile": false,
+  "batch_size_per_device": 16,
+  "global_batch": 32,
+  "grad_accum_steps": 1,
+  "train_path": "data/external/parallel/subsamples/stage_b_Bp_a1136_r126_f0.9.jsonl",
+  "steps": 500,
+  "best_primary_chrfpp": 51.49364,
+  "best_step": 100,
+  "elapsed_s": 278.4,
+  "backend": {
+    "device": "cuda:0",
+    "tf32": true,
+    "cudnn_benchmark": true,
+    "matmul_precision": "high",
+    "sdpa": true,
+    "sdp_backends": {
+      "flash": true,
+      "mem_efficient": true,
+      "math": false
+    },
+    "cuda_name": "NVIDIA H200",
+    "cuda_cc": "9.0",
+    "free_gb": 138.81,
+    "total_gb": 139.8,
+    "world_size": 2,
+    "rank": 0,
+    "ddp": true
+  },
+  "checkpoints": {
+    "last": "data/runs/nllb600_B_Bp_h200_Bp_ddp2_20260727T011740Z/checkpoints/last",
+    "best_primary": "data/runs/nllb600_B_Bp_h200_Bp_ddp2_20260727T011740Z/checkpoints/best_primary"
+  },
+  "rss_gb": 6.39,
+  "gpu_mem_gb": 1.259
+}

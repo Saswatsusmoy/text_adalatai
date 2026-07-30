@@ -1,0 +1,128 @@
+{
+  "protocol": {
+    "decode": "beam=4 max_new=256 max_in=256",
+    "device": "H200 cuda batch=32 bf16",
+    "C1c_v2_run": "nllb600_A_A1_c1c_v2_h200_ddp2_20260726T234856Z (emb-save retrain)",
+    "C1c_v1_run": "nllb600_A_A1_c1c_h200_ddp2_20260726T225043Z",
+    "A2_run": "nllb600_A_A2_h200_A2_ddp2_20260726T212958Z"
+  },
+  "scores": {
+    "zero_shot": {
+      "I_test": {
+        "n": 190,
+        "bleu": 18.85,
+        "chrfpp": 44.74
+      },
+      "E_milpac_test": {
+        "n": 117,
+        "bleu": 34.28,
+        "chrfpp": 55.22
+      },
+      "E_anuvaad_test": {
+        "n": 3000,
+        "bleu": 39.39,
+        "chrfpp": 60.08
+      }
+    },
+    "A2_best": {
+      "I_test": {
+        "n": 190,
+        "bleu": 21.86,
+        "chrfpp": 49.66
+      },
+      "E_milpac_test": {
+        "n": 117,
+        "bleu": 34.9,
+        "chrfpp": 56.46
+      },
+      "E_anuvaad_test": {
+        "n": 3000,
+        "bleu": 45.8,
+        "chrfpp": 64.83
+      }
+    },
+    "C1c_v2_best": {
+      "I_test": {
+        "n": 190,
+        "bleu": 17.79,
+        "chrfpp": 43.86
+      },
+      "E_milpac_test": {
+        "n": 117,
+        "bleu": 28.2,
+        "chrfpp": 49.78
+      },
+      "E_anuvaad_test": {
+        "n": 3000,
+        "bleu": 37.64,
+        "chrfpp": 58.46
+      }
+    },
+    "C1c_v1_best": {
+      "I_test": {
+        "n": 190,
+        "bleu": 6.38,
+        "chrfpp": 24.86
+      },
+      "E_milpac_test": {
+        "n": 117,
+        "bleu": 10.66,
+        "chrfpp": 28.63
+      },
+      "E_anuvaad_test": {
+        "n": 3000,
+        "bleu": 15.65,
+        "chrfpp": 34.35
+      }
+    }
+  },
+  "deltas_C1c_v2_vs_zero_shot": {
+    "I_test": {
+      "bleu": -1.06,
+      "chrfpp": -0.88
+    },
+    "E_milpac_test": {
+      "bleu": -6.08,
+      "chrfpp": -5.44
+    },
+    "E_anuvaad_test": {
+      "bleu": -1.75,
+      "chrfpp": -1.62
+    }
+  },
+  "deltas_C1c_v2_vs_A2": {
+    "I_test": {
+      "bleu": -4.07,
+      "chrfpp": -5.8
+    },
+    "E_milpac_test": {
+      "bleu": -6.7,
+      "chrfpp": -6.68
+    },
+    "E_anuvaad_test": {
+      "bleu": -8.16,
+      "chrfpp": -6.37
+    }
+  },
+  "deltas_C1c_v1_vs_zero_shot": {
+    "I_test": {
+      "bleu": -12.47,
+      "chrfpp": -19.88
+    },
+    "E_milpac_test": {
+      "bleu": -23.62,
+      "chrfpp": -26.59
+    },
+    "E_anuvaad_test": {
+      "bleu": -23.74,
+      "chrfpp": -25.73
+    }
+  },
+  "decision": {
+    "production_checkpoint": "Track D A2 best_primary",
+    "reason": "C1c v2 careful vocab-extend + A1 LoRA underperforms zero-shot and A2 on all I_test / E_milpac_test / E_anuvaad_test suites. C1c v1 bulk extend is catastrophic. Keep Track D A2 as dual-policy production; C1c remains ablation / Track C experiment.",
+    "C1c_v2_adapters": "data/runs/nllb600_A_A1_c1c_v2_h200_ddp2_20260726T234856Z/checkpoints/best_primary",
+    "C1c_v2_base": "data/models/nllb600_c1c_sp_ext_v2",
+    "A2_adapters": "data/runs/nllb600_A_A2_h200_A2_ddp2_20260726T212958Z/checkpoints/best_primary"
+  }
+}
