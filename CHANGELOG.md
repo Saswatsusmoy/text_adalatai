@@ -2,7 +2,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **requirements.txt:** remove invalid `python>=3.10` pip line (not a package; use pyproject requires-python).
+
 ### Added
+
 
 - **Modular phase layout for interview / graders (no experiment loss):**
   - Package maps in `src/{preprocessing,tokenizer,training,evaluation,utils}/__init__.py`.
