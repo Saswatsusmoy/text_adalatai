@@ -135,6 +135,60 @@
       <code>sentencepiece_legal_v2_joint_full_bpe_41000.model</code>.
     </p>
 
+    <h3>Full tokenizer matrix (DESIGN &sect;33)</h3>
+    <p>
+      35 configs trained on H200 (48 cores, parallel-6). Phase 1 = Cartesian
+      <code>{unigram, bpe} &times; {16k, 32k, 41k, 48k, 64k} &times; {joint, hi}</code> = 20 configs.
+      Phase 2 = 5 secondary-axis toggles on top-3 joint bases = 15 configs.
+      Code: <code>src/tokenizer/{matrix_configs, train_matrix, bench_matrix}.py</code>.
+      Full dump: <code>data/analysis/tokenizer_matrix.json</code>.
+    </p>
+
+    <h4>Phase 1 ladder (joint corpus, MT-usable)</h4>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Vocab</th><th>Unigram HI c/t</th><th>BPE HI c/t</th><th>Best total tok</th></tr></thead>
+        <tbody>
+          <tr><td class="num">16k</td><td class="num">4.295</td><td class="num">4.303</td><td class="num">11,084</td></tr>
+          <tr><td class="num">32k</td><td class="num">4.564</td><td class="num">4.527</td><td class="num">10,403</td></tr>
+          <tr><td class="num">41k</td><td class="num">4.609</td><td class="num">4.604</td><td class="num">10,253</td></tr>
+          <tr><td class="num">48k</td><td class="num">4.634</td><td class="num">4.638</td><td class="num">10,166</td></tr>
+          <tr><td class="num"><strong>64k</strong></td><td class="num"><strong>4.695</strong></td><td class="num"><strong>4.695</strong></td><td class="num"><strong>10,027</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      v2_hi mirror packs slightly better on HI (up to 4.818) but the EN legal-probe
+      hit-rate is 0-50% &mdash; unusable for MT. BPE vs Unigram is not consistent across
+      the ladder (Unigram wins 32k, BPE wins 48k, tied at 64k) so the two families are
+      effectively equivalent on this corpus / vocab budget.
+    </p>
+
+    <h4>Phase 2 axis effects (avg over 3 joint bases)</h4>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Axis</th><th>&Delta; HI c/t</th><th>Decision</th></tr></thead>
+        <tbody>
+          <tr><td><code>byte_fallback=True</code></td><td class="num">0.000</td><td>Adopt &mdash; free OOV robustness, 0.00% UNK</td></tr>
+          <tr><td><code>character_coverage=0.9995</code></td><td class="num">&minus;0.029</td><td>Reject &mdash; introduces 0.83% UNK</td></tr>
+          <tr><td><code>split_digits=True</code></td><td class="num"><strong>&minus;0.700</strong></td><td>Reject &mdash; catastrophic; splits case numbers, dates, section numbers</td></tr>
+          <tr><td><code>split_by_unicode_script=True</code></td><td class="num">&minus;0.237</td><td>Reject &mdash; kills mixed-script pieces</td></tr>
+          <tr><td><code>user_defined_symbols</code> (22 legal)</td><td class="num">&minus;0.246</td><td>Reject &mdash; UDS also drops legal-HI probe 1.00 &rarr; 0.33</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout decision">
+      <div class="label">Freeze decision</div>
+      <p>
+        <code>SPM_V2_PRIMARY</code> stays <code>sentencepiece_legal_v2_joint_full_41000.model</code>
+        (Unigram 41k). Track D shipped uses NLLB native tokens &mdash; changing the SPM
+        affects no shipped output. +7% packing gain doesn't justify churn for a track
+        that lost dual-policy. <strong>Recommendation for any future Track C rebuild:</strong>
+        <code>bpe_64k_bf</code> or <code>unigram_64k_bf</code> (byte_fallback + max ladder).
+      </p>
+    </div>
+
     <h2>Integration strategy</h2>
     <div class="table-wrap">
       <table>

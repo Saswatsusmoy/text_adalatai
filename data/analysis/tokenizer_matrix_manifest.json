@@ -1,0 +1,703 @@
+{
+  "runs": [
+    {
+      "name": "legal_v2_v2_joint_bpe_16000",
+      "model_type": "bpe",
+      "vocab_size": 16000,
+      "corpus_key": "v2_joint",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": false,
+        "split_digits": false,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_joint_bpe_16000.model",
+      "status": "trained",
+      "elapsed_s": 21.8,
+      "model_size_bytes": 554736
+    },
+    {
+      "name": "legal_v2_v2_joint_bpe_32000",
+      "model_type": "bpe",
+      "vocab_size": 32000,
+      "corpus_key": "v2_joint",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": false,
+        "split_digits": false,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_joint_bpe_32000.model",
+      "status": "trained",
+      "elapsed_s": 24.5,
+      "model_size_bytes": 887333
+    },
+    {
+      "name": "legal_v2_v2_joint_bpe_41000",
+      "model_type": "bpe",
+      "vocab_size": 41000,
+      "corpus_key": "v2_joint",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": false,
+        "split_digits": false,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_joint_bpe_41000.model",
+      "status": "trained",
+      "elapsed_s": 28.1,
+      "model_size_bytes": 1076567
+    },
+    {
+      "name": "legal_v2_v2_joint_bpe_48000",
+      "model_type": "bpe",
+      "vocab_size": 48000,
+      "corpus_key": "v2_joint",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": false,
+        "split_digits": false,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_joint_bpe_48000.model",
+      "status": "trained",
+      "elapsed_s": 22.7,
+      "model_size_bytes": 1225644
+    },
+    {
+      "name": "legal_v2_v2_joint_bpe_64000",
+      "model_type": "bpe",
+      "vocab_size": 64000,
+      "corpus_key": "v2_joint",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": false,
+        "split_digits": false,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_joint_bpe_64000.model",
+      "status": "trained",
+      "elapsed_s": 22.7,
+      "model_size_bytes": 1568427
+    },
+    {
+      "name": "legal_v2_v2_hi_unigram_16000",
+      "model_type": "unigram",
+      "vocab_size": 16000,
+      "corpus_key": "v2_hi",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": false,
+        "split_digits": false,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_hi_unigram_16000.model",
+      "status": "trained",
+      "elapsed_s": 174.1,
+      "model_size_bytes": 641741
+    },
+    {
+      "name": "legal_v2_v2_joint_unigram_48000",
+      "model_type": "unigram",
+      "vocab_size": 48000,
+      "corpus_key": "v2_joint",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": false,
+        "split_digits": false,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_joint_unigram_48000.model",
+      "status": "trained",
+      "elapsed_s": 321.1,
+      "model_size_bytes": 1246312
+    },
+    {
+      "name": "legal_v2_v2_joint_unigram_41000",
+      "model_type": "unigram",
+      "vocab_size": 41000,
+      "corpus_key": "v2_joint",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": false,
+        "split_digits": false,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_joint_unigram_41000.model",
+      "status": "trained",
+      "elapsed_s": 322.0,
+      "model_size_bytes": 1104152
+    },
+    {
+      "name": "legal_v2_v2_joint_unigram_32000",
+      "model_type": "unigram",
+      "vocab_size": 32000,
+      "corpus_key": "v2_joint",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": false,
+        "split_digits": false,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_joint_unigram_32000.model",
+      "status": "trained",
+      "elapsed_s": 323.4,
+      "model_size_bytes": 916747
+    },
+    {
+      "name": "legal_v2_v2_joint_unigram_16000",
+      "model_type": "unigram",
+      "vocab_size": 16000,
+      "corpus_key": "v2_joint",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": false,
+        "split_digits": false,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_joint_unigram_16000.model",
+      "status": "trained",
+      "elapsed_s": 327.1,
+      "model_size_bytes": 578754
+    },
+    {
+      "name": "legal_v2_v2_hi_bpe_16000",
+      "model_type": "bpe",
+      "vocab_size": 16000,
+      "corpus_key": "v2_hi",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": false,
+        "split_digits": false,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_hi_bpe_16000.model",
+      "status": "trained",
+      "elapsed_s": 10.7,
+      "model_size_bytes": 618556
+    },
+    {
+      "name": "legal_v2_v2_hi_bpe_32000",
+      "model_type": "bpe",
+      "vocab_size": 32000,
+      "corpus_key": "v2_hi",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": false,
+        "split_digits": false,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_hi_bpe_32000.model",
+      "status": "trained",
+      "elapsed_s": 11.5,
+      "model_size_bytes": 1013759
+    },
+    {
+      "name": "legal_v2_v2_hi_bpe_41000",
+      "model_type": "bpe",
+      "vocab_size": 41000,
+      "corpus_key": "v2_hi",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": false,
+        "split_digits": false,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_hi_bpe_41000.model",
+      "status": "trained",
+      "elapsed_s": 11.5,
+      "model_size_bytes": 1236537
+    },
+    {
+      "name": "legal_v2_v2_joint_unigram_64000",
+      "model_type": "unigram",
+      "vocab_size": 64000,
+      "corpus_key": "v2_joint",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": false,
+        "split_digits": false,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_joint_unigram_64000.model",
+      "status": "trained",
+      "elapsed_s": 367.7,
+      "model_size_bytes": 1556199
+    },
+    {
+      "name": "legal_v2_v2_hi_bpe_48000",
+      "model_type": "bpe",
+      "vocab_size": 48000,
+      "corpus_key": "v2_hi",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": false,
+        "split_digits": false,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_hi_bpe_48000.model",
+      "status": "trained",
+      "elapsed_s": 11.6,
+      "model_size_bytes": 1410867
+    },
+    {
+      "name": "legal_v2_v2_hi_bpe_64000",
+      "model_type": "bpe",
+      "vocab_size": 64000,
+      "corpus_key": "v2_hi",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": false,
+        "split_digits": false,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_hi_bpe_64000.model",
+      "status": "trained",
+      "elapsed_s": 11.8,
+      "model_size_bytes": 1803973
+    },
+    {
+      "name": "legal_v2_v2_hi_unigram_32000",
+      "model_type": "unigram",
+      "vocab_size": 32000,
+      "corpus_key": "v2_hi",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": false,
+        "split_digits": false,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_hi_unigram_32000.model",
+      "status": "trained",
+      "elapsed_s": 168.1,
+      "model_size_bytes": 1037001
+    },
+    {
+      "name": "legal_v2_v2_hi_unigram_48000",
+      "model_type": "unigram",
+      "vocab_size": 48000,
+      "corpus_key": "v2_hi",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": false,
+        "split_digits": false,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_hi_unigram_48000.model",
+      "status": "trained",
+      "elapsed_s": 150.9,
+      "model_size_bytes": 1425379
+    },
+    {
+      "name": "legal_v2_v2_hi_unigram_64000",
+      "model_type": "unigram",
+      "vocab_size": 64000,
+      "corpus_key": "v2_hi",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": false,
+        "split_digits": false,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_hi_unigram_64000.model",
+      "status": "trained",
+      "elapsed_s": 151.7,
+      "model_size_bytes": 1821323
+    },
+    {
+      "name": "legal_v2_v2_hi_unigram_41000",
+      "model_type": "unigram",
+      "vocab_size": 41000,
+      "corpus_key": "v2_hi",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": false,
+        "split_digits": false,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_hi_unigram_41000.model",
+      "status": "trained",
+      "elapsed_s": 163.9,
+      "model_size_bytes": 1252463
+    },
+    {
+      "name": "legal_v2_v2_joint_bpe_64000_sus",
+      "model_type": "bpe",
+      "vocab_size": 64000,
+      "corpus_key": "v2_joint",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": false,
+        "split_digits": false,
+        "split_by_unicode_script": true,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_joint_bpe_64000_sus.model",
+      "status": "trained",
+      "elapsed_s": 22.8,
+      "model_size_bytes": 1568233
+    },
+    {
+      "name": "legal_v2_v2_joint_bpe_64000_cc0.9995",
+      "model_type": "bpe",
+      "vocab_size": 64000,
+      "corpus_key": "v2_joint",
+      "options": {
+        "character_coverage": 0.9995,
+        "byte_fallback": false,
+        "split_digits": false,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_joint_bpe_64000_cc0.9995.model",
+      "status": "trained",
+      "elapsed_s": 23.1,
+      "model_size_bytes": 1571171
+    },
+    {
+      "name": "legal_v2_v2_joint_bpe_64000_uds22",
+      "model_type": "bpe",
+      "vocab_size": 64000,
+      "corpus_key": "v2_joint",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": false,
+        "split_digits": false,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": [
+          "Section",
+          "Article",
+          "Order",
+          "Rule",
+          "Writ",
+          "Petition",
+          "Appellant",
+          "Respondent",
+          "SLP",
+          "WP",
+          "S.C.R.",
+          "INSC",
+          "अनुच्छेद",
+          "धारा",
+          "आदेश",
+          "नियम",
+          "रिट",
+          "याचिका",
+          "अपीलकर्ता",
+          "प्रतिवादी",
+          "न्यायालय",
+          "अधिवक्ता"
+        ]
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_joint_bpe_64000_uds22.model",
+      "status": "trained",
+      "elapsed_s": 23.4,
+      "model_size_bytes": 1567298
+    },
+    {
+      "name": "legal_v2_v2_joint_bpe_64000_sd",
+      "model_type": "bpe",
+      "vocab_size": 64000,
+      "corpus_key": "v2_joint",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": false,
+        "split_digits": true,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_joint_bpe_64000_sd.model",
+      "status": "trained",
+      "elapsed_s": 24.3,
+      "model_size_bytes": 1604135
+    },
+    {
+      "name": "legal_v2_v2_joint_bpe_64000_bf",
+      "model_type": "bpe",
+      "vocab_size": 64000,
+      "corpus_key": "v2_joint",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": true,
+        "split_digits": false,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_joint_bpe_64000_bf.model",
+      "status": "trained",
+      "elapsed_s": 25.8,
+      "model_size_bytes": 1567223
+    },
+    {
+      "name": "legal_v2_v2_joint_bpe_48000_bf",
+      "model_type": "bpe",
+      "vocab_size": 48000,
+      "corpus_key": "v2_joint",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": true,
+        "split_digits": false,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_joint_bpe_48000_bf.model",
+      "status": "trained",
+      "elapsed_s": 22.9,
+      "model_size_bytes": 1224675
+    },
+    {
+      "name": "legal_v2_v2_joint_bpe_48000_sd",
+      "model_type": "bpe",
+      "vocab_size": 48000,
+      "corpus_key": "v2_joint",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": false,
+        "split_digits": true,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_joint_bpe_48000_sd.model",
+      "status": "trained",
+      "elapsed_s": 22.0,
+      "model_size_bytes": 1252086
+    },
+    {
+      "name": "legal_v2_v2_joint_bpe_48000_sus",
+      "model_type": "bpe",
+      "vocab_size": 48000,
+      "corpus_key": "v2_joint",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": false,
+        "split_digits": false,
+        "split_by_unicode_script": true,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_joint_bpe_48000_sus.model",
+      "status": "trained",
+      "elapsed_s": 22.3,
+      "model_size_bytes": 1228426
+    },
+    {
+      "name": "legal_v2_v2_joint_bpe_48000_cc0.9995",
+      "model_type": "bpe",
+      "vocab_size": 48000,
+      "corpus_key": "v2_joint",
+      "options": {
+        "character_coverage": 0.9995,
+        "byte_fallback": false,
+        "split_digits": false,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_joint_bpe_48000_cc0.9995.model",
+      "status": "trained",
+      "elapsed_s": 22.5,
+      "model_size_bytes": 1228489
+    },
+    {
+      "name": "legal_v2_v2_joint_bpe_48000_uds22",
+      "model_type": "bpe",
+      "vocab_size": 48000,
+      "corpus_key": "v2_joint",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": false,
+        "split_digits": false,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": [
+          "Section",
+          "Article",
+          "Order",
+          "Rule",
+          "Writ",
+          "Petition",
+          "Appellant",
+          "Respondent",
+          "SLP",
+          "WP",
+          "S.C.R.",
+          "INSC",
+          "अनुच्छेद",
+          "धारा",
+          "आदेश",
+          "नियम",
+          "रिट",
+          "याचिका",
+          "अपीलकर्ता",
+          "प्रतिवादी",
+          "न्यायालय",
+          "अधिवक्ता"
+        ]
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_joint_bpe_48000_uds22.model",
+      "status": "trained",
+      "elapsed_s": 23.9,
+      "model_size_bytes": 1224354
+    },
+    {
+      "name": "legal_v2_v2_joint_unigram_64000_sus",
+      "model_type": "unigram",
+      "vocab_size": 64000,
+      "corpus_key": "v2_joint",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": false,
+        "split_digits": false,
+        "split_by_unicode_script": true,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_joint_unigram_64000_sus.model",
+      "status": "trained",
+      "elapsed_s": 309.3,
+      "model_size_bytes": 1577904
+    },
+    {
+      "name": "legal_v2_v2_joint_unigram_64000_uds22",
+      "model_type": "unigram",
+      "vocab_size": 64000,
+      "corpus_key": "v2_joint",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": false,
+        "split_digits": false,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": [
+          "Section",
+          "Article",
+          "Order",
+          "Rule",
+          "Writ",
+          "Petition",
+          "Appellant",
+          "Respondent",
+          "SLP",
+          "WP",
+          "S.C.R.",
+          "INSC",
+          "अनुच्छेद",
+          "धारा",
+          "आदेश",
+          "नियम",
+          "रिट",
+          "याचिका",
+          "अपीलकर्ता",
+          "प्रतिवादी",
+          "न्यायालय",
+          "अधिवक्ता"
+        ]
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_joint_unigram_64000_uds22.model",
+      "status": "trained",
+      "elapsed_s": 310.8,
+      "model_size_bytes": 1550860
+    },
+    {
+      "name": "legal_v2_v2_joint_unigram_64000_cc0.9995",
+      "model_type": "unigram",
+      "vocab_size": 64000,
+      "corpus_key": "v2_joint",
+      "options": {
+        "character_coverage": 0.9995,
+        "byte_fallback": false,
+        "split_digits": false,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_joint_unigram_64000_cc0.9995.model",
+      "status": "trained",
+      "elapsed_s": 329.8,
+      "model_size_bytes": 1557099
+    },
+    {
+      "name": "legal_v2_v2_joint_unigram_64000_bf",
+      "model_type": "unigram",
+      "vocab_size": 64000,
+      "corpus_key": "v2_joint",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": true,
+        "split_digits": false,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_joint_unigram_64000_bf.model",
+      "status": "trained",
+      "elapsed_s": 356.2,
+      "model_size_bytes": 1555803
+    },
+    {
+      "name": "legal_v2_v2_joint_unigram_64000_sd",
+      "model_type": "unigram",
+      "vocab_size": 64000,
+      "corpus_key": "v2_joint",
+      "options": {
+        "character_coverage": 1.0,
+        "byte_fallback": false,
+        "split_digits": true,
+        "split_by_unicode_script": false,
+        "normalization": "nmt_nfkc",
+        "user_defined_symbols": []
+      },
+      "path": "data/models/tokenizers/sentencepiece_legal_v2_v2_joint_unigram_64000_sd.model",
+      "status": "trained",
+      "elapsed_s": 351.2,
+      "model_size_bytes": 1599945
+    }
+  ]
+}

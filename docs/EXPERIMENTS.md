@@ -297,6 +297,67 @@ make tokenizer-spm-v2-bench
 
 Eval default for v2 benches: **held_out** = assignment dev+test only (SPM never trained on those docs).
 
+### 4.5 Full tokenizer matrix (DESIGN §33)
+
+35 configs trained on H200 (48-core, parallel-6). Phase 1 = Cartesian
+`{unigram, bpe} x {16k, 32k, 41k, 48k, 64k} x {v2_joint, v2_hi}` = 20 configs.
+Phase 2 = 5 secondary-axis toggles applied to the top 3 Phase-1 joint configs
+(bpe_64k, unigram_64k, bpe_48k) = 15 additional configs.
+
+Code: `src/tokenizer/matrix_configs.py` (dataclass + presets), `train_matrix.py`
+(subprocess-per-config, resumable manifest), `bench_matrix.py` (auto-discover +
+legal-term probe + UNK rate). Make: `tokenizer-matrix-{phase1,phase2,bench}`.
+
+Reports:
+- `data/analysis/tokenizer_matrix.json` -- full bench (35 rows on 322 held-out pairs)
+- `data/analysis/tokenizer_matrix_manifest.json` -- training manifest with elapsed_s + model size
+
+**Phase 1 -- main matrix** (held-out 322 pairs; joint corpus is MT-usable, v2_hi fragments EN):
+
+| Config | Vocab | HI c/t | Total tok | Legal HI probe | Legal EN probe |
+|--------|------:|-------:|----------:|---------------:|---------------:|
+| v2_joint unigram 16k | 16000 | 4.295 | 11,084 | 1.00 | 1.00 |
+| v2_joint bpe 16k | 16000 | 4.303 | 11,099 | 1.00 | 1.00 |
+| v2_joint unigram 32k | 32000 | 4.564 | 10,403 | 1.00 | 1.00 |
+| v2_joint bpe 32k | 32000 | 4.527 | 10,448 | 1.00 | 1.00 |
+| v2_joint unigram 41k (shipped) | 41000 | 4.609 | 10,261 | 1.00 | 1.00 |
+| v2_joint bpe 41k | 41000 | 4.604 | 10,253 | 1.00 | 1.00 |
+| v2_joint unigram 48k | 48000 | 4.634 | 10,198 | 1.00 | 1.00 |
+| v2_joint bpe 48k | 48000 | 4.638 | 10,166 | 1.00 | 1.00 |
+| **v2_joint unigram 64k** | 64000 | **4.695** | 10,040 | 1.00 | 1.00 |
+| **v2_joint bpe 64k** | 64000 | **4.695** | **10,027** | 1.00 | 1.00 |
+
+v2_hi mirror (unusable for MT: EN probe 0-50%): HI c/t 4.525-4.818 across the ladder.
+
+BPE vs Unigram is not consistent -- Unigram wins 32k (4.564 > 4.527), BPE wins
+48k (4.638 > 4.634), tied at 64k. The two families are effectively equivalent on
+this corpus/vocab budget.
+
+**Phase 2 -- secondary-axis ablation** (top-3 joint bases: `bpe_64k`, `unigram_64k`, `bpe_48k`):
+
+| Axis | Change vs baseline (avg over 3 bases) | Decision |
+|------|--------------------------------------:|----------|
+| `byte_fallback=True` | HI c/t 0.00 (unchanged); still 0.00% UNK | **Adopt** -- free robustness against unseen chars |
+| `character_coverage=0.9995` | HI c/t -0.029; UNK 0.83% | **Reject** -- introduces UNK for negligible gain |
+| `split_digits=True` | HI c/t **-0.700 (catastrophic)** | **Reject** -- splits case numbers, dates, section numbers into digit tokens |
+| `split_by_unicode_script=True` | HI c/t -0.237 | **Reject** -- forces EN/HI script boundary splits, kills mixed-script pieces |
+| `user_defined_symbols` (22 legal HI+EN) | HI c/t -0.246; legal-HI probe rate 1.00 -> 0.33 | **Reject** -- UDS entries take vocab slots that would have gone to composite pieces; the forced-single-piece guarantee interferes with the merge lattice |
+
+**Frozen ranking** (joint corpus, MT-usable, decode-time packing):
+
+1. `bpe_64k_bf` / `unigram_64k_bf` -- HI c/t 4.695, 10,027-10,040 total tokens, `byte_fallback` for robustness. Tied best.
+2. `bpe_64k` / `unigram_64k` -- same packing, no byte-fallback.
+3. `bpe_48k` -- HI c/t 4.638, 10,166 total; 16k fewer vocab rows than 64k.
+
+**Decision:** `SPM_V2_PRIMARY` **stays at** `sentencepiece_legal_v2_joint_full_41000.model`.
+- Track D shipped uses NLLB native tokens, not v2 SPM; changing the SPM freeze changes no shipped output.
+- Existing Track C artifacts and configs reference the 41k freeze.
+- +7% packing gain (4.695 vs 4.37 old) doesn't justify churning downstream for a track that already lost dual-policy.
+
+**Recommendation for any future Track C rebuild** (from-scratch Marian, fresh C1c-style extend, etc.): use `sentencepiece_legal_v2_v2_joint_bpe_64000_bf.model` or the unigram equivalent. Model files present under `data/models/tokenizers/`.
+
+**Naming note:** matrix models have a redundant `v2_v2_joint` prefix due to the `TokenizerConfig.name()` template (`legal_v2_{corpus_key}_{...}` with `corpus_key='v2_joint'`). Cosmetic; not fixed since renaming means retraining 35 models.
+
 ---
 
 ## 5. Dual-track MT (Track D + Track C1c) -- results

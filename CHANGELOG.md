@@ -4,6 +4,16 @@
 
 ### Added
 
+- **Full tokenizer matrix (35 configs)** (DESIGN §33, EXPERIMENTS §4.5):
+  - `src/tokenizer/matrix_configs.py` -- `TokenizerConfig` dataclass with 14 fields (model_type, vocab_size, corpus_key, character_coverage, byte_fallback, split_digits, split_by_unicode_script, normalization, max_sentence_length, user_defined_symbols, seed_sentencepiece_size, input_sentence_size, num_threads, seed). Deterministic name/prefix. Presets: `phase1_configs()` (Cartesian, 20 configs) and `phase2_configs(top)` (secondary-axis toggles, 5 per base).
+  - `src/tokenizer/train_matrix.py` -- ProcessPoolExecutor runner (subprocess-per-config so OOM in one doesn't kill others); resumable via `data/analysis/tokenizer_matrix_manifest.json`; ranks phase-1 winners by HI c/t filtered to `v2_joint` (v2_hi excluded as MT-unusable).
+  - `src/tokenizer/bench_matrix.py` -- auto-discovers all `sentencepiece_legal_v2_*.model` in `data/models/tokenizers/`, encodes assignment held-out (322 pairs), reports HI/EN c/t, HI/EN ratio, total tokens, Devanagari vocab pieces, legal-term single-piece probe (15 HI + 12 EN terms), and UNK rate. Writes `data/analysis/tokenizer_matrix.json`.
+  - Make: `tokenizer-matrix-phase1`, `tokenizer-matrix-phase2`, `tokenizer-matrix-bench` (`MATRIX_PARALLEL=6` default).
+  - **Trained on H200 (48 cores, parallel-6):** Phase 1 = 20 configs (5 BPE joint 20-28s each, 5 Unigram joint 320-368s each, 10 v2_hi variants). Phase 2 = 15 configs on top-3 joint bases. Total wall time ~30 min for the whole matrix.
+  - **Phase 1 winners (joint corpus, MT-usable):** BPE 64k and Unigram 64k tied at HI c/t **4.695** / total **10,027-10,040**. Ladder: 16k 4.30, 32k 4.55, 41k 4.61, 48k 4.64, 64k 4.70.
+  - **Phase 2 axis effects (avg over 3 bases):** `byte_fallback=True` neutral (free robustness); `character_coverage=0.9995` -0.03 c/t + 0.83% UNK (reject); `split_digits=True` **-0.70 c/t catastrophic** (splits case numbers/dates/sections); `split_by_unicode_script=True` -0.24 (kills mixed-script pieces); `user_defined_symbols` 22 legal terms -0.25 + legal-HI probe rate 1.00->0.33 (UDS interferes with merge lattice).
+  - **Decision:** `SPM_V2_PRIMARY` stays Unigram 41k. Track D shipped uses NLLB native tokens (no SPM change affects shipped output); existing Track C configs reference 41k freeze; +7% packing gain doesn't justify churn for a track that lost dual-policy. **Recommendation for future Track C rebuild:** `bpe_64k_bf` or `unigram_64k_bf` (byte_fallback for OOV robustness, 100% legal probe hit-rate).
+
 - **BPE vs Unigram at v2 41K -- packing ablation** (DESIGN §32, EXPERIMENTS §4.3):
   - `src/tokenizer/train_full_joint.py --model-type {unigram,bpe}` -- trainer now supports BPE with a distinct output prefix (`_bpe` infix) so the two live side by side.
   - Model: `data/models/tokenizers/sentencepiece_legal_v2_joint_full_bpe_41000.model` (same deduped v2 joint corpus, same profile `full`, same char coverage, same special-token IDs; only `model_type` differs).

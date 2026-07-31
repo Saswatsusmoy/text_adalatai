@@ -1070,3 +1070,70 @@ Do not switch the freeze. `SPM_V2_PRIMARY` stays at Unigram 41K:
 1. MT train on BPE 41K (C1a from-scratch or C1c extend) -- required to answer "is BPE better for legal MT" beyond packing.
 2. BPE at 48K / 64K to see if it dominates Unigram at those sizes too.
 3. Subword-regularization comparison (Unigram has native sampling; BPE-dropout is separate).
+
+---
+
+## 33. Full tokenizer matrix (35 configs)
+
+**Date:** 2026-07-31
+
+**Context:** §32 closed the 41K BPE-vs-Unigram gap but only at one vocab size and only with default options. To answer "what tokenizer configuration is actually best for legal EN-HI packing?" a systematic sweep was needed.
+
+**Method:** Two-phase sweep on H200 (48 CPU cores, parallel-6).
+
+Phase 1 -- main matrix (20 configs, all defaults):
+- `model_type` in {unigram, bpe}
+- `vocab_size` in {16k, 32k, 41k, 48k, 64k}
+- `corpus_key` in {v2_joint, v2_hi}
+
+Phase 2 -- secondary-axis ablation (15 configs; top-3 Phase-1 joint bases x 5 single-axis toggles):
+- `byte_fallback=True`
+- `character_coverage=0.9995`
+- `split_digits=True`
+- `split_by_unicode_script=True`
+- `user_defined_symbols` = 22 legal EN+HI protected terms
+
+Code: `src/tokenizer/matrix_configs.py`, `train_matrix.py` (subprocess-per-config, resumable manifest via `data/analysis/tokenizer_matrix_manifest.json`), `bench_matrix.py` (auto-discovery + legal-term probe + UNK rate).
+Make: `tokenizer-matrix-phase1`, `tokenizer-matrix-phase2`, `tokenizer-matrix-bench`.
+
+**Result (joint corpus; v2_hi excluded as MT-unusable -- EN legal-probe rate 0-50%):**
+
+Phase 1 best packing (held-out HI c/t / total tokens on 322 pairs):
+
+| Vocab | Unigram HI c/t | BPE HI c/t | Best total tok |
+|------:|---------------:|-----------:|---------------:|
+| 16k | 4.295 | 4.303 | 11,084 |
+| 32k | 4.564 | 4.527 | 10,403 |
+| 41k | 4.609 | 4.604 | 10,253 |
+| 48k | 4.634 | 4.638 | 10,166 |
+| **64k** | **4.695** | **4.695** | **10,027** |
+
+Phase 2 axis effects (average delta across the 3 base configs):
+
+| Axis | Delta HI c/t | Notes |
+|------|-------------:|-------|
+| `byte_fallback=True` | 0.000 | Same packing; UNK stays 0.00%; free robustness |
+| `character_coverage=0.9995` | -0.029 | Introduces 0.83% UNK; not worth 0.03 c/t loss |
+| `split_digits=True` | **-0.700** | Catastrophic; splits case numbers, dates, section numbers |
+| `split_by_unicode_script=True` | -0.237 | Kills mixed-script (EN-in-HI-sentence) subwords |
+| `user_defined_symbols` (22 legal) | -0.246 | Also drops legal-HI probe rate 1.00 -> 0.33 (UDS interferes with merge lattice) |
+
+**Decision:** `SPM_V2_PRIMARY` stays `sentencepiece_legal_v2_joint_full_41000.model` (Unigram 41K).
+
+Reasons:
+1. Track D shipped uses NLLB native tokens, so any v2 SPM change affects no shipped output.
+2. Track C artifacts and configs reference the current 41k freeze.
+3. The +7% packing gain going 41k -> 64k does not justify churn for a track that already lost dual-policy in §26.
+
+**Recommendation for future Track C rebuild (any C1a from-scratch or fresh C1c-style extend):** use `sentencepiece_legal_v2_v2_joint_bpe_64000_bf.model` or the unigram equivalent -- HI c/t 4.695, byte_fallback for OOV robustness, 100% legal HI + EN probe hit-rate, 0.00% UNK.
+
+**Followups not run:**
+1. MT-quality run (Track C1c-style vocab extend) with the winner config -- packing is not translation quality.
+2. Rank sensitivity: same matrix at rank 8 / 16 / 32 LoRA on the extended model.
+3. Subword-regularization on the winner during MT training (Unigram sampling alpha or BPE-dropout p).
+4. Corpus expansion: repeat matrix with WikiMatrix + FLORES lines mixed into v2_joint.
+
+**Artifact map:**
+- 35 model+vocab pairs: `data/models/tokenizers/sentencepiece_legal_v2_v2_*.model` (joint variants pulled local; hi variants stayed on H200 -- MT-unusable)
+- Full bench: `data/analysis/tokenizer_matrix.json`
+- Training manifest: `data/analysis/tokenizer_matrix_manifest.json`

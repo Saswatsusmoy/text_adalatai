@@ -3,7 +3,8 @@
 	tokenizer-prepare tokenizer-train-16k tokenizer-train-32k tokenizer-train-41k \
 	tokenizer-train-all tokenizer-train tokenizer-bench \
 	tokenizer-spm-v2-corpus tokenizer-spm-v2-train tokenizer-spm-v2-bench tokenizer-c0 \
-	tokenizer-spm-v2-full-joint tokenizer-spm-v2-full-joint-bpe profile-hardware \
+	tokenizer-spm-v2-full-joint tokenizer-spm-v2-full-joint-bpe \
+	tokenizer-matrix-phase1 tokenizer-matrix-phase2 tokenizer-matrix-bench profile-hardware \
 	zero-shot-nllb zero-shot-nllb-smoke \
 	eval-mbr-smoke eval-mbr-a2 eval-mbr-zs \
 	comet-score \
@@ -117,6 +118,19 @@ tokenizer-spm-v2-full-joint:
 tokenizer-spm-v2-full-joint-bpe:
 	PYTHONPATH=. python3 src/tokenizer/train_full_joint.py --vocab-size 41000 --max-chars 4096 --model-type bpe
 	PYTHONPATH=. python3 src/tokenizer/benchmark.py --eval held_out
+
+# --- Tokenizer matrix (DESIGN §33): {unigram,bpe} x {16,32,41,48,64}k x {joint,hi} + secondary axes ---
+
+MATRIX_PARALLEL ?= 6
+
+tokenizer-matrix-phase1:
+	PYTHONPATH=. python3 -m src.tokenizer.train_matrix --phase 1 --parallel $(MATRIX_PARALLEL)
+
+tokenizer-matrix-phase2:
+	PYTHONPATH=. python3 -m src.tokenizer.train_matrix --phase 2 --parallel $(MATRIX_PARALLEL)
+
+tokenizer-matrix-bench:
+	PYTHONPATH=. python3 -m src.tokenizer.bench_matrix
 
 # --- Hardware ---
 
