@@ -600,6 +600,8 @@ Rationale: among full-joint models, 64k wins pure packing, but larger V increase
 
 **Not in C0:** model embedding resize / LoRA (Track C1); default-backbone zero-shot (Track D).
 
+> **Supersedes note (§33):** the vocab-size ablation above (41k / 48k / 64k, Unigram only) and the individual freeze rationale are subsumed by the full 35-config tokenizer matrix in §33 (Cartesian `{unigram, bpe} x {16k..64k} x {joint, hi}` + 5 secondary-axis ablations on top-3 bases). The §33 matrix confirms the 41k freeze rationale on the joint corpus, adds BPE data (`bpe_41k` HI c/t 4.604 vs Unigram 4.609 at 41k), and identifies `bpe_64k_bf` / `unigram_64k_bf` as the recommendation for any future Track C rebuild. **`SPM_V2_PRIMARY` unchanged.**
+
 ---
 
 ## 19. Default local training: Apple M4 16GB + MLX + MPS (optional remote H200)

@@ -217,34 +217,14 @@ Full joint on 16GB: exact dedupe (~2% dups) + max line 4096 + `seed_sentencepiec
 
 **Finding:** HI-only packs Hindi best but **fragments English** (bad for MT). **Joint** is required for translation-oriented vocab.
 
-#### Vocab-size ablation (joint_full Unigram, same corpus)
+#### Individual ablations (superseded by §4.4 matrix)
 
-| Size | Held-out HI c/t | Held-out total | Test total |
-|-----:|----------------:|---------------:|-----------:|
-| 41k | 4.37 | 10,978 | 6,211 |
-| 48k | 4.38 | 10,937 | 6,194 |
-| 64k | **4.42** | **10,819** | **6,125** |
+Two axis-at-a-time ablations were run before the full matrix and are now subsumed by it -- kept here as narrative for how the matrix came to be.
 
-Gains 41k->64k are real but small (~1.4% tokens). Larger V can allocate more pieces to frequent legal collocations and leaves a longer tail of rare IDs for MT embeddings.
+- **Vocab-size ablation** (Unigram 41k / 48k / 64k joint) -- established the 41k / 48k / 64k ladder that Phase 1 of the matrix later expanded to include 16k / 32k and BPE.
+- **BPE vs Unigram at 41k** (DESIGN §32) -- the initial single-point comparison. BPE 41k beat Unigram 41k by +0.7% on packing (4.40 vs 4.37 HI c/t). This is one row of the §4.4 matrix now; the full ladder (§4.4) shows the two families are effectively equivalent at every vocab size.
 
-#### BPE vs Unigram ablation at 41k (same v2 joint corpus, same profile)
-
-Follow-up to close a gap called out in DESIGN §15: v1 was Unigram only, and no BPE 41k on the v2 joint corpus had been trained. Same dedup+truncate corpus, same profile `full`, same `character_coverage=1.0`, same special-token IDs -- only `model_type` differs.
-
-| Model | Vocab | HI c/t | HI/EN | Total tok (held-out) | Dev pieces |
-|-------|------:|-------:|------:|---------------------:|-----------:|
-| v2 joint_full 41k (Unigram, shipped) | 41000 | 4.37 | 0.720 | 10,978 | 16,217 |
-| **v2 joint_full 41k BPE (new)** | 41000 | **4.40** | 0.721 | **10,898** | 16,371 |
-| v2 joint_full 48k Unigram | 48000 | 4.38 | 0.721 | 10,937 | 18,524 |
-| v2 joint_full 64k Unigram | 64000 | **4.42** | 0.722 | 10,819 | 23,742 |
-
-**Finding:** BPE 41k marginally beats Unigram 41k on packing: +0.03 HI c/t (+0.7%) and -80 total tokens (-0.7%) on 322 held-out pairs. BPE 41k lands between Unigram 48k and 64k on packing at the 41k parameter budget, with slightly more Devanagari pieces in the vocab.
-
-**Nuance:** SentencePiece BPE is Unicode-aware (`character_coverage=1.0`, no byte fallback) -- it is **not** the byte-level BPE that §4.1 flagged as Devanagari-blind. This BPE variant is a valid vocab strategy for legal HI.
-
-**Caveat -- packing only:** no MT training run was done with the BPE model. Track D shipped keeps NLLB native tokens (Track C1c already showed vocab surgery on a pretrained NLLB is not free even when packing improves). A from-scratch legal MT (C1a-style) or a full C1c-style extension of NLLB with this BPE 41k are the natural next steps -- not run.
-
-Model: `data/models/tokenizers/sentencepiece_legal_v2_joint_full_bpe_41000.model` (1.08 MB vs Unigram 1.12 MB). Trainer: `src/tokenizer/train_full_joint.py --model-type bpe`.
+JSON dumps preserved for provenance (see `data/analysis/README.md` for full status map): `tokenizer_metrics_v2.json`, `tokenizer_benchmark_c0.json`, `tokenizer_vocab_size_ablation.json`. Current source of truth: `tokenizer_matrix.json`.
 
 #### Production freeze (Track C)
 
@@ -254,50 +234,13 @@ data/models/tokenizers/sentencepiece_legal_v2_joint_full_41000.model
 
 Constant: `src/config.py` -> `SPM_V2_PRIMARY`
 
-**Why 41k (not packing-max 64k):**
+**Why 41k (not packing-max 64k)** -- §4.4 "Freeze decision" has the current reasoning based on the full matrix. Short version: Track D shipped uses NLLB native tokens (v2 SPM change affects no shipped output); existing Track C configs reference 41k; +7% packing gain 41k -> 64k does not justify churning downstream for a track that lost dual-policy in §26.
 
-- Limit over-specialization on frequent subwords / collocations
-- Smaller embedding matrix for Track C1 (~56% fewer rows than 64k)
-- Still large gain vs v1 (~8% fewer tokens on frozen test)
-- 48k/64k kept as **ablations only**
+#### Glossary observation (n_tokens; 1 is best)
 
-JSON dumps:
+Typical pattern for joint_full 41k: single pieces for न्यायालय, अपीलार्थी, Section, impugned; Writ Petition often 2; S.L.P. still multi-piece. HI-only fragments some English legal strings (Section, impugned). This qualitative observation predates the §4.4 matrix probe (which measured 15 HI + 12 EN legal terms formally and reports 100% single-piece hit on all joint models).
 
-- `data/analysis/tokenizer_metrics_v2.json`
-- `data/analysis/tokenizer_benchmark_c0.json`
-- `data/analysis/tokenizer_vocab_size_ablation.json`
-
-#### Glossary (n_tokens; 1 is best)
-
-Typical pattern for joint_full 41k: single pieces for न्यायालय, अपीलार्थी, Section, impugned; Writ Petition often 2; S.L.P. still multi-piece. HI-only fragments some English legal strings (Section, impugned).
-
-### 4.4 Reproduce tokenizer work
-
-```bash
-# v1 Prarabdha SP
-make tokenizer-train-all
-
-# v2 corpora + grid (sample joint + hi)
-make tokenizer-c0
-
-# full joint Unigram (dedupe path)
-make tokenizer-spm-v2-full-joint
-# extra sizes:
-PYTHONPATH=. python3 src/tokenizer/train_full_joint.py --vocab-size 48000 --max-chars 4096
-PYTHONPATH=. python3 src/tokenizer/train.py \
-  --input data/external/spm_corpus_legal_v2_joint_dedup_c4096.txt \
-  --vocab-size 64000 \
-  --model-prefix sentencepiece_legal_v2_joint_full_64000 \
-  --profile full
-
-# held-out bench (default)
-make tokenizer-spm-v2-bench
-# PYTHONPATH=. python3 src/tokenizer/benchmark.py --eval held_out|test|all
-```
-
-Eval default for v2 benches: **held_out** = assignment dev+test only (SPM never trained on those docs).
-
-### 4.5 Full tokenizer matrix (DESIGN §33)
+### 4.4 Full tokenizer matrix (DESIGN §33) -- **primary evidence**
 
 35 configs trained on H200 (48-core, parallel-6). Phase 1 = Cartesian
 `{unigram, bpe} x {16k, 32k, 41k, 48k, 64k} x {v2_joint, v2_hi}` = 20 configs.
@@ -357,6 +300,38 @@ this corpus/vocab budget.
 **Recommendation for any future Track C rebuild** (from-scratch Marian, fresh C1c-style extend, etc.): use `sentencepiece_legal_v2_v2_joint_bpe_64000_bf.model` or the unigram equivalent. Model files present under `data/models/tokenizers/`.
 
 **Naming note:** matrix models have a redundant `v2_v2_joint` prefix due to the `TokenizerConfig.name()` template (`legal_v2_{corpus_key}_{...}` with `corpus_key='v2_joint'`). Cosmetic; not fixed since renaming means retraining 35 models.
+
+### 4.5 Reproduce tokenizer work
+
+```bash
+# v1 Prarabdha SP
+make tokenizer-train-all
+
+# v2 corpora + grid (sample joint + hi)
+make tokenizer-c0
+
+# full joint Unigram (dedupe path)
+make tokenizer-spm-v2-full-joint
+# full joint BPE 41k (DESIGN §32 ablation, kept as artifact)
+make tokenizer-spm-v2-full-joint-bpe
+
+# Full 35-config matrix (DESIGN §33; primary evidence in §4.4)
+make tokenizer-matrix-phase1     # 20 base configs (Cartesian) on H200 parallel-6
+make tokenizer-matrix-phase2     # 15 secondary-axis toggles on top-3 joint bases
+make tokenizer-matrix-bench      # writes tokenizer_matrix.json
+
+# Extra individual sizes (subsumed by matrix; kept for provenance)
+PYTHONPATH=. python3 src/tokenizer/train_full_joint.py --vocab-size 48000 --max-chars 4096
+PYTHONPATH=. python3 src/tokenizer/train.py \
+  --input data/external/spm_corpus_legal_v2_joint_dedup_c4096.txt \
+  --vocab-size 64000 \
+  --model-prefix sentencepiece_legal_v2_joint_full_64000 \
+  --profile full
+
+# Held-out bench (default = assignment dev+test only; SPM never trained on those docs)
+make tokenizer-spm-v2-bench
+# PYTHONPATH=. python3 src/tokenizer/benchmark.py --eval held_out|test|all
+```
 
 ---
 
