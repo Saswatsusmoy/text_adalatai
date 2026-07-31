@@ -9,23 +9,20 @@
 <body data-page="tokenizers">
   <div id="page-source" data-title="Tokenizer analysis" data-kicker="Phase 2">
     <p>
-      Assignment pillar 1: measure and reduce Indic token inefficiency. We compared tokenizer
-      families on the legal EN-HI pairs, trained domain SentencePiece models, froze a production
-      SPM for Track C experiments, and tested whether vocab-extending NLLB improves translation
-      (it did not, on this budget -- see Track C).
+      Assignment pillar 1: measure and reduce Indic token inefficiency. Approach: (1) cross-family
+      survey to identify the failure mode of Devanagari-blind tokenizers, then (2) a full 35-config
+      matrix on the domain corpus to freeze the best SentencePiece configuration for legal EN-HI.
     </p>
 
-    <h2>What was measured</h2>
+    <h2>1. Cross-family survey (motivation)</h2>
+    <p>What was measured on the raw assignment bitext (1,458 EN-HI pairs):</p>
     <ul>
       <li>Hindi <strong>chars per token</strong> (higher = denser packing)</li>
-      <li><strong>HI / EN token ratio</strong> (closer to 1 = less Indic overhead vs English)</li>
-      <li><strong>Total tokens</strong> on the corpus (proxy for context length and cost)</li>
+      <li><strong>HI / EN token ratio</strong> (closer to 1 = less Indic overhead)</li>
+      <li><strong>Total tokens</strong> on the corpus (proxy for context length + cost)</li>
       <li>Whether Devanagari exists as first-class pieces or falls back to UTF-8 bytes</li>
     </ul>
-    <p>Code: <code>src/tokenizer/benchmark.py</code>, <code>deep_dive.py</code>. JSON dumps under
-      <code>data/analysis/tokenizer_*.json</code>.</p>
 
-    <h2>Family-level findings</h2>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Family</th><th>Examples</th><th>Hindi on legal text</th></tr></thead>
@@ -52,20 +49,17 @@
       <div class="label">Important distinction</div>
       <p>
         The failure mode is <strong>byte-level / Devanagari-blind BPE</strong>, not "all BPE".
-        SentencePiece <code>model_type=bpe</code> is still Unicode-aware. Domain work uses Unigram SP.
+        SentencePiece <code>model_type=bpe</code> is Unicode-aware and is a different animal --
+        see matrix results below.
       </p>
     </div>
 
-    <h2>Domain SentencePiece v1 (mono legal HI)</h2>
-    <p>
-      Trained Unigram models on ~14M characters of Hindi from Prarabdha Indian legal SFT data
-      (Apache 2.0), sizes 16k / 32k / 41k, <code>character_coverage=1.0</code>.
-    </p>
+    <p><strong>Domain SPM 41k vs large general tokenizers</strong> (raw assignment bitext, 1,458 pairs):</p>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Model</th><th>Vocab</th><th>HI c/t</th><th>HI/EN</th><th>Total tok</th></tr></thead>
         <tbody>
-          <tr><td><strong>Domain SP 41k</strong></td><td class="num">41k</td><td class="num">3.84</td><td class="num">0.743</td><td class="num">53,124</td></tr>
+          <tr><td><strong>Domain SP 41k (v1 Prarabdha, mono HI)</strong></td><td class="num">41k</td><td class="num">3.84</td><td class="num">0.743</td><td class="num">53,124</td></tr>
           <tr><td>Domain SP 32k</td><td class="num">32k</td><td class="num">3.70</td><td class="num">0.751</td><td class="num">54,789</td></tr>
           <tr><td>Domain SP 16k</td><td class="num">16k</td><td class="num">3.33</td><td class="num">0.772</td><td class="num">59,833</td></tr>
           <tr><td>Gemma 4 SP (ref)</td><td class="num">262k</td><td class="num">3.42</td><td class="num">0.800</td><td class="num">57,095</td></tr>
@@ -74,77 +68,52 @@
       </table>
     </div>
     <p>
-      Domain SP 41k beats large general tokenizers on this legal bench despite far less pretraining
-      data. Legal terms often encode as single pieces: न्यायालय, अपीलार्थी, अनुच्छेद, अधिकारिता.
+      A 41k domain SPM on ~14M chars of legal Hindi beats Gemma-262k and GPT-4o-200k on packing
+      for this bench. Legal terms often encode as single pieces:
+      न्यायालय, अपीलार्थी, अनुच्छेद, अधिकारिता. This established the direction: build a proper
+      domain SPM on the full Stage A + assignment train corpus and sweep the design space.
     </p>
 
-    <h2>Domain SentencePiece v2 (Track C0 freeze)</h2>
+    <h2>2. Full 35-config tokenizer matrix</h2>
     <p>
-      Joint EN+HI Unigram trained from Stage A legal bitext + assignment <strong>train only</strong>
-      (dev/test docs hard-excluded in code). Full joint train on 16GB via exact-line dedupe and a
-      memory profile (not byte-level BPE).
+      SentencePiece has ~10 knobs that meaningfully affect legal-domain packing. Rather than
+      hand-picking a single freeze, we ran the full Cartesian for the primary axes plus a
+      one-at-a-time ablation for secondary axes. 35 tokenizers trained on H200 (48 cores,
+      parallel-6, ~30 min total wall clock).
     </p>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Model</th><th>HI c/t (held-out)</th><th>HI/EN</th><th>Total tok</th><th>Note</th></tr></thead>
-        <tbody>
-          <tr><td>v2 HI-only 41k</td><td class="num">4.46</td><td class="num">0.43</td><td class="num">14,880</td><td>HI packs best; EN fragmented</td></tr>
-          <tr><td><strong>v2 joint_full 41k</strong></td><td class="num">4.37</td><td class="num">0.72</td><td class="num">10,978</td><td>Track C freeze</td></tr>
-          <tr><td>v1 Prarabdha 41k</td><td class="num">3.95</td><td class="num">0.74</td><td class="num">11,965</td><td>mono HI baseline</td></tr>
-        </tbody>
-      </table>
-    </div>
 
-    <h3>Vocab size ablation (same joint corpus)</h3>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Size</th><th>Held-out total tokens</th><th>Decision</th></tr></thead>
-        <tbody>
-          <tr><td class="num">41k</td><td class="num">10,978</td><td>Freeze -- emb size / overfit tradeoff</td></tr>
-          <tr><td class="num">48k</td><td class="num">10,937</td><td>Ablation only</td></tr>
-          <tr><td class="num">64k</td><td class="num">10,819</td><td>Best packing (~1.4% fewer tokens); larger emb</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <pre class="codeblock">data/models/tokenizers/sentencepiece_legal_v2_joint_full_41000.model
-# src.config.SPM_V2_PRIMARY</pre>
+    <h3>Corpus + Firewall</h3>
+    <p>All matrix models train on the <strong>v2 legal corpus</strong>: Stage A (MILPaC + Anuvaad,
+      ~993k pairs) + assignment <strong>train</strong> only. Dev/test docs are hard-excluded in
+      <code>src/tokenizer/prepare_spm_corpus.py</code>. So all held-out numbers below use SPMs the
+      target text was never in.</p>
+    <ul>
+      <li><code>v2_joint</code> corpus: 291M chars, 1.99M lines (EN + HI); deduped to 480MB / 1.95M lines with <code>max_sentence_length=4096</code></li>
+      <li><code>v2_hi</code> corpus: 139M chars, 994k lines (HI only)</li>
+    </ul>
 
-    <h3>BPE vs Unigram at 41k (packing-only ablation, DESIGN &sect;32)</h3>
+    <h3>Method</h3>
+    <p><strong>Phase 1 -- main matrix</strong> (20 configs, all defaults):
+      <code>{unigram, bpe} &times; {16k, 32k, 41k, 48k, 64k} &times; {v2_joint, v2_hi}</code>.</p>
+    <p><strong>Phase 2 -- secondary-axis ablation</strong> (15 configs; 5 single-axis toggles on
+      top-3 Phase-1 joint bases -- <code>bpe_64k</code>, <code>unigram_64k</code>,
+      <code>bpe_48k</code>):
+      <code>byte_fallback</code>, <code>character_coverage=0.9995</code>,
+      <code>split_digits</code>, <code>split_by_unicode_script</code>,
+      <code>user_defined_symbols</code>=22 legal EN+HI protected terms.
+    </p>
     <p>
-      SentencePiece BPE 41K trained on the exact same deduped v2 joint corpus, same profile,
-      same char coverage. Only <code>model_type</code> differs. Note: this is Unicode-aware
-      SentencePiece BPE, <strong>not</strong> the byte-level BPE flagged as Devanagari-blind above.
-    </p>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Model</th><th>Vocab</th><th>HI c/t</th><th>Total tok</th><th>Dev pieces</th></tr></thead>
-        <tbody>
-          <tr><td><strong>v2 joint 41K Unigram (shipped)</strong></td><td class="num">41000</td><td class="num">4.37</td><td class="num">10,978</td><td class="num">16,217</td></tr>
-          <tr><td>v2 joint 41K BPE</td><td class="num">41000</td><td class="num"><strong>4.40</strong></td><td class="num"><strong>10,898</strong></td><td class="num">16,371</td></tr>
-          <tr><td>v2 joint 48K Unigram</td><td class="num">48000</td><td class="num">4.38</td><td class="num">10,937</td><td class="num">18,524</td></tr>
-          <tr><td>v2 joint 64K Unigram</td><td class="num">64000</td><td class="num">4.42</td><td class="num">10,819</td><td class="num">23,742</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p>
-      BPE 41K beats Unigram 41K on packing by 0.7% (+0.03 HI c/t, &minus;80 total tokens on
-      322 held-out pairs). BPE lands between Unigram 48K and 64K at the 41K parameter budget.
-      Difference is small and <strong>no MT-quality run was performed on BPE</strong> &mdash;
-      packing is not translation quality. Shipped freeze stays Unigram 41K.
-      BPE model kept as ablation artifact:
-      <code>sentencepiece_legal_v2_joint_full_bpe_41000.model</code>.
+      Code:
+      <code>src/tokenizer/matrix_configs.py</code>
+      (TokenizerConfig dataclass, 14 fields, presets),
+      <code>train_matrix.py</code> (ProcessPoolExecutor, subprocess-per-config,
+      resumable manifest),
+      <code>bench_matrix.py</code> (auto-discovery + legal-term probe + UNK rate).
+      Make: <code>tokenizer-matrix-phase1</code> / <code>-phase2</code> / <code>-bench</code>.
     </p>
 
-    <h3>Full tokenizer matrix (DESIGN &sect;33)</h3>
-    <p>
-      35 configs trained on H200 (48 cores, parallel-6). Phase 1 = Cartesian
-      <code>{unigram, bpe} &times; {16k, 32k, 41k, 48k, 64k} &times; {joint, hi}</code> = 20 configs.
-      Phase 2 = 5 secondary-axis toggles on top-3 joint bases = 15 configs.
-      Code: <code>src/tokenizer/{matrix_configs, train_matrix, bench_matrix}.py</code>.
-      Full dump: <code>data/analysis/tokenizer_matrix.json</code>.
-    </p>
-
-    <h4>Phase 1 ladder (joint corpus, MT-usable)</h4>
+    <h3>Phase 1 result (joint corpus, MT-usable)</h3>
+    <p>Held-out 322 pairs (assignment dev + test, never in SPM train):</p>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Vocab</th><th>Unigram HI c/t</th><th>BPE HI c/t</th><th>Best total tok</th></tr></thead>
@@ -158,38 +127,81 @@
       </table>
     </div>
     <p>
-      v2_hi mirror packs slightly better on HI (up to 4.818) but the EN legal-probe
-      hit-rate is 0-50% &mdash; unusable for MT. BPE vs Unigram is not consistent across
-      the ladder (Unigram wins 32k, BPE wins 48k, tied at 64k) so the two families are
-      effectively equivalent on this corpus / vocab budget.
+      Reads:
     </p>
+    <ul>
+      <li><strong>Packing scales with vocab up through 64k</strong> (4.30 &rarr; 4.70). Diminishing returns above 41k (~1.4% packing gain each doubling).</li>
+      <li><strong>BPE vs Unigram is a wash</strong>. Unigram wins 32k, BPE wins 48k, tied at 64k. Effectively equivalent on this corpus + vocab budget -- so choice of model_type is not a lever here.</li>
+      <li>Legal-HI single-piece probe rate is <strong>100%</strong> for all 10 joint models (न्यायालय, अनुच्छेद, अपीलकर्ता, ... always one token).</li>
+      <li>Legal-EN single-piece probe rate is <strong>100%</strong> on joint (Section, Writ, Petition, Appellant, ... always one token). <strong>0-50%</strong> on v2_hi -- HI-only fragments English, unusable for MT.</li>
+      <li><strong>UNK rate = 0.00%</strong> everywhere because <code>character_coverage=1.0</code>.</li>
+    </ul>
 
-    <h4>Phase 2 axis effects (avg over 3 joint bases)</h4>
+    <h3>Phase 2 axis effects (avg delta over 3 joint bases)</h3>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Axis</th><th>&Delta; HI c/t</th><th>Decision</th></tr></thead>
+        <thead><tr><th>Axis</th><th>&Delta; HI c/t</th><th>Notes</th><th>Decision</th></tr></thead>
         <tbody>
-          <tr><td><code>byte_fallback=True</code></td><td class="num">0.000</td><td>Adopt &mdash; free OOV robustness, 0.00% UNK</td></tr>
-          <tr><td><code>character_coverage=0.9995</code></td><td class="num">&minus;0.029</td><td>Reject &mdash; introduces 0.83% UNK</td></tr>
-          <tr><td><code>split_digits=True</code></td><td class="num"><strong>&minus;0.700</strong></td><td>Reject &mdash; catastrophic; splits case numbers, dates, section numbers</td></tr>
-          <tr><td><code>split_by_unicode_script=True</code></td><td class="num">&minus;0.237</td><td>Reject &mdash; kills mixed-script pieces</td></tr>
-          <tr><td><code>user_defined_symbols</code> (22 legal)</td><td class="num">&minus;0.246</td><td>Reject &mdash; UDS also drops legal-HI probe 1.00 &rarr; 0.33</td></tr>
+          <tr>
+            <td><code>byte_fallback=True</code></td>
+            <td class="num">0.000</td>
+            <td>Packing unchanged; UNK stays 0.00%; adds OOV robustness at inference</td>
+            <td><strong>Adopt</strong></td>
+          </tr>
+          <tr>
+            <td><code>character_coverage=0.9995</code></td>
+            <td class="num">&minus;0.029</td>
+            <td>Introduces 0.83% UNK for negligible gain</td>
+            <td>Reject</td>
+          </tr>
+          <tr>
+            <td><code>split_digits=True</code></td>
+            <td class="num"><strong>&minus;0.700</strong></td>
+            <td>Case numbers, dates, section numbers all split to digit tokens</td>
+            <td>Reject (catastrophic)</td>
+          </tr>
+          <tr>
+            <td><code>split_by_unicode_script=True</code></td>
+            <td class="num">&minus;0.237</td>
+            <td>Forces every EN/HI boundary as a split; kills mixed-script pieces</td>
+            <td>Reject</td>
+          </tr>
+          <tr>
+            <td><code>user_defined_symbols</code> (22 legal)</td>
+            <td class="num">&minus;0.246</td>
+            <td>Also drops legal-HI probe rate 1.00 &rarr; 0.33 -- UDS entries interfere with the merge lattice and consume vocab slots that would have gone to composite pieces</td>
+            <td>Reject</td>
+          </tr>
         </tbody>
       </table>
     </div>
 
+    <h3>Ranking</h3>
+    <ol>
+      <li><code>bpe_64k_bf</code> / <code>unigram_64k_bf</code> -- HI c/t <strong>4.695</strong>, total <strong>10,027-10,040</strong>, byte_fallback for robustness. Tied best.</li>
+      <li><code>bpe_64k</code> / <code>unigram_64k</code> baseline -- same packing, no byte-fallback.</li>
+      <li><code>bpe_48k</code> -- HI c/t 4.638, 10,166 total; 16k fewer vocab rows than 64k.</li>
+    </ol>
+
     <div class="callout decision">
       <div class="label">Freeze decision</div>
       <p>
-        <code>SPM_V2_PRIMARY</code> stays <code>sentencepiece_legal_v2_joint_full_41000.model</code>
-        (Unigram 41k). Track D shipped uses NLLB native tokens &mdash; changing the SPM
-        affects no shipped output. +7% packing gain doesn't justify churn for a track
-        that lost dual-policy. <strong>Recommendation for any future Track C rebuild:</strong>
-        <code>bpe_64k_bf</code> or <code>unigram_64k_bf</code> (byte_fallback + max ladder).
+        <code>SPM_V2_PRIMARY</code> <strong>stays</strong>
+        <code>sentencepiece_legal_v2_joint_full_41000.model</code> (Unigram 41k).
+      </p>
+      <ul>
+        <li>Track D shipped uses NLLB native tokens, so changing v2 SPM affects no shipped output.</li>
+        <li>Existing Track C artifacts and configs reference the 41k freeze.</li>
+        <li>+7% packing gain (4.37 &rarr; 4.695) doesn't justify churn for a track that lost dual-policy in §26.</li>
+      </ul>
+      <p>
+        <strong>Recommendation for any future Track C rebuild</strong>
+        (C1a from-scratch or fresh C1c-style extend):
+        <code>bpe_64k_bf</code> or <code>unigram_64k_bf</code>.
       </p>
     </div>
 
-    <h2>Integration strategy</h2>
+    <h2>3. Integration strategy (two tracks)</h2>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Track</th><th>Idea</th><th>Outcome</th></tr></thead>
@@ -213,11 +225,32 @@
       warm-up lost dual-policy quality (Track C pages). For legal fidelity, LoRA on stock NLLB won.
     </p>
 
+    <h2>4. Followups not run</h2>
+    <ul>
+      <li>MT-quality run (C1c-style vocab extend) with the matrix winner -- packing is not translation quality.</li>
+      <li>Rank sensitivity of LoRA on the extended-vocab NLLB.</li>
+      <li>Subword regularization during MT training (Unigram sampling alpha, BPE-dropout).</li>
+      <li>Corpus expansion: repeat matrix with WikiMatrix + FLORES lines mixed into v2_joint.</li>
+    </ul>
+
+    <h2>Artifacts</h2>
+    <ul>
+      <li><code>data/analysis/tokenizer_matrix.json</code> -- 35-model bench dump</li>
+      <li><code>data/analysis/tokenizer_matrix_manifest.json</code> -- training manifest (elapsed_s + model size per config)</li>
+      <li><code>data/models/tokenizers/sentencepiece_legal_v2_*.{model,vocab}</code> -- all 35 model + vocab pairs</li>
+      <li>DESIGN_DECISIONS &sect;33 (freeze rationale) &middot; EXPERIMENTS &sect;4.5 (full tables)</li>
+    </ul>
+
     <h2>Reproduce</h2>
-    <pre class="codeblock">make tokenizer-train-all          # v1 mono HI (needs Prarabdha download)
-make tokenizer-c0                 # v2 corpus + train + bench
-make tokenizer-spm-v2-full-joint  # full joint 41k path
-make tokenizer-bench</pre>
+    <pre class="codeblock">make tokenizer-matrix-phase1   # 20 configs, parallel-6
+make tokenizer-matrix-phase2   # 15 configs (auto-picks top-3 v2_joint from phase 1)
+make tokenizer-matrix-bench    # all 35, writes tokenizer_matrix.json
+
+# individual v2 paths still available:
+make tokenizer-c0                        # v2 corpus + sample train + bench
+make tokenizer-spm-v2-full-joint         # unigram full joint 41k
+make tokenizer-spm-v2-full-joint-bpe     # bpe full joint 41k
+make tokenizer-train-all                 # v1 Prarabdha ladder</pre>
   </div>
   <script src="../js/site.js"></script>
 </body>

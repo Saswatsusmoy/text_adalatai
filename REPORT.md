@@ -15,16 +15,9 @@ English to Hindi translation for Indian court judgments, with two goals:
 
 ## 1. Tokenizer analysis and integration strategy
 
-### 1.1 What we compared
+### 1.1 Cross-family survey (motivation)
 
-On the full assignment bitext (1,458 EN-HI pairs after alignment), we measured:
-
-- Hindi **chars per token** (higher = better packing)
-- **HI/EN token ratio** (closer to 1 = less Indic overhead vs English)
-- Total token count (proxy for **context length and inference cost**)
-- Presence of Devanagari pieces in the vocab (vs pure byte fallback)
-
-Families covered (via HuggingFace / vendor tokenizers + custom SPMs):
+Measured on the raw assignment bitext (1,458 EN-HI pairs): Hindi chars per token, HI/EN token ratio, total tokens, presence of Devanagari pieces in the vocab.
 
 | Family | Examples | Hindi behavior on legal text |
 |--------|----------|------------------------------|
@@ -32,15 +25,9 @@ Families covered (via HuggingFace / vendor tokenizers + custom SPMs):
 | Multilingual BPE with Dev pieces | NLLB, OpenAI o200k | Good packing |
 | **Byte-level BPE** | many Llama-line models | **Weak**: often 0 Dev vocab entries; UTF-8 byte split; ~1.1-2.7x HI cost |
 
-Important distinction: the failure mode is **byte-level / Devanagari-blind BPE**, not "all BPE". SentencePiece BPE is still Unicode-aware. Domain work uses **Unigram SentencePiece**.
+**Distinction that matters:** the failure mode is **byte-level / Devanagari-blind BPE**, not "all BPE". SentencePiece `model_type=bpe` is still Unicode-aware -- see matrix results in §1.2 where it ties Unigram at the top end.
 
-Code: `src/tokenizer/benchmark.py`, `src/tokenizer/deep_dive.py`. Dumps: `data/analysis/tokenizer_*.json`.
-
-### 1.2 Domain SentencePiece
-
-**v1 (mono legal HI):** Unigram on ~14M chars from Prarabdha Indian legal SFT data. Sizes 16k / 32k / 41k.
-
-On the assignment corpus, **custom SP 41k beat large general models** on packing despite far less pretraining data:
+**Domain SPM vs large general tokenizers** (v1 Unigram on ~14M chars of legal HI, raw assignment bitext):
 
 | Model | Vocab | HI c/t | HI/EN | Total tok |
 |-------|------:|-------:|------:|----------:|
@@ -50,25 +37,56 @@ On the assignment corpus, **custom SP 41k beat large general models** on packing
 | Gemma 4 (ref SP) | 262k | 3.42 | 0.800 | 57,095 |
 | GPT-4o o200k (ref) | 200k | 2.97 | 0.949 | 60,034 |
 
-**Legal terms as single pieces** under domain SP (examples): न्यायालय, अपीलार्थी, अनुच्छेद, अधिकारिता.
+A 41k domain SPM beats Gemma-262k and GPT-4o-200k on packing despite ~1000x less pretraining data. Legal terms encode as single pieces: न्यायालय, अपीलार्थी, अनुच्छेद, अधिकारिता. This established the direction: build a proper domain SPM on the full Stage A + assignment train corpus and sweep the design space.
 
-**v2 (Track C0, production SPM freeze):** joint EN+HI from Stage A legal bitext + assignment **train only** (dev/test docs hard-excluded). Full Unigram train on 16GB via exact-line dedupe + optional 4096-char cap.
+Code: `src/tokenizer/benchmark.py`, `src/tokenizer/deep_dive.py`. Dumps: `data/analysis/tokenizer_*.json`.
 
-| Model | HI c/t (held-out) | HI/EN | Total tok |
-|-------|------------------:|------:|----------:|
-| v2 HI-only 41k | 4.46 | 0.43 | 14,880 |
-| **v2 joint_full 41k** | 4.37 | **0.72** | **10,978** |
-| v1 Prarabdha 41k | 3.95 | 0.74 | 11,965 |
+### 1.2 Full 35-config tokenizer matrix (DESIGN §33)
 
-HI-only packs Hindi best but **fragments English** (bad for MT). **Joint EN+HI** is required for a translation-oriented vocab.
+Rather than picking one freeze by hand, ran the full Cartesian for primary axes plus a one-at-a-time ablation for secondary axes. All models trained on the **v2 legal corpus** = Stage A (MILPaC + Anuvaad, ~993k pairs) + assignment **train only** (dev/test docs hard-excluded in code). 35 tokenizers, H200 48-core parallel-6, ~30 min total wall clock.
 
-Vocab ablation (same joint corpus): 64k packs ~1.4% better than 41k. Freeze is **41k** for embedding size and lower over-specialization:
+**Method.**
 
-```text
-data/models/tokenizers/sentencepiece_legal_v2_joint_full_41000.model
-```
+*Phase 1 -- main matrix (20 configs, all defaults):* `{unigram, bpe} × {16k, 32k, 41k, 48k, 64k} × {v2_joint, v2_hi}`.
 
-**BPE vs Unigram at 41k (packing-only ablation, DESIGN §32):** trained SentencePiece BPE 41K on the exact same deduped v2 joint corpus, same profile, same char coverage. Held-out (322 pairs): BPE HI c/t 4.40 vs Unigram 4.37 (+0.7%), total tokens 10,898 vs 10,978 (-0.7%). BPE 41K sits between Unigram 48K and 64K on packing at the 41K parameter budget. Difference is small; no MT-quality run was performed on BPE, so the shipped SPM freeze stays Unigram 41K. BPE model kept as ablation artifact (`sentencepiece_legal_v2_joint_full_bpe_41000.model`).
+*Phase 2 -- secondary-axis ablation (15 configs; 5 single-axis toggles on top-3 Phase-1 joint bases):* `byte_fallback`, `character_coverage=0.9995`, `split_digits`, `split_by_unicode_script`, `user_defined_symbols` = 22 legal EN+HI protected terms.
+
+Code: `src/tokenizer/matrix_configs.py`, `train_matrix.py`, `bench_matrix.py`. Make: `tokenizer-matrix-{phase1,phase2,bench}`.
+
+**Phase 1 result (joint corpus, MT-usable)** -- held-out 322 pairs (assignment dev + test, never in SPM train):
+
+| Vocab | Unigram HI c/t | BPE HI c/t | Best total tok |
+|------:|---------------:|-----------:|---------------:|
+| 16k | 4.295 | 4.303 | 11,084 |
+| 32k | 4.564 | 4.527 | 10,403 |
+| 41k | 4.609 | 4.604 | 10,253 |
+| 48k | 4.634 | 4.638 | 10,166 |
+| **64k** | **4.695** | **4.695** | **10,027** |
+
+- Packing scales with vocab through 64k (4.30 → 4.70). Diminishing returns above 41k (~1.4% each doubling).
+- **BPE vs Unigram is a wash**: Unigram wins 32k, BPE wins 48k, tied at 64k. Model type is not a lever here.
+- Legal single-piece probe rate: **100% HI** (15/15 terms) and **100% EN** (12/12) for all 10 joint models. UNK rate 0.00%.
+- v2_hi mirror packs slightly better on HI (up to 4.818) but EN legal-probe rate 0-50% → unusable for MT.
+
+**Phase 2 axis effects (avg delta over 3 joint bases):**
+
+| Axis | Δ HI c/t | Notes | Decision |
+|------|---------:|-------|----------|
+| `byte_fallback=True` | 0.000 | Packing unchanged; UNK 0.00%; adds OOV robustness | **Adopt** |
+| `character_coverage=0.9995` | −0.029 | Introduces 0.83% UNK for negligible gain | Reject |
+| `split_digits=True` | **−0.700** | Case numbers, dates, section numbers split to digit tokens | Reject (catastrophic) |
+| `split_by_unicode_script=True` | −0.237 | Forces EN/HI boundary splits; kills mixed-script pieces | Reject |
+| `user_defined_symbols` (22 legal) | −0.246 | Also drops legal-HI probe 1.00 → 0.33 (UDS interferes with merge lattice) | Reject |
+
+**Ranking:**
+
+1. `bpe_64k_bf` / `unigram_64k_bf` -- HI c/t **4.695**, total **10,027-10,040**, `byte_fallback` for robustness. Tied best.
+2. `bpe_64k` / `unigram_64k` baseline -- same packing, no byte-fallback.
+3. `bpe_48k` -- HI c/t 4.638, 10,166 total; 16k fewer vocab rows than 64k.
+
+**Freeze decision.** `SPM_V2_PRIMARY` stays `sentencepiece_legal_v2_joint_full_41000.model` (Unigram 41k). Track D shipped uses NLLB native tokens -- changing v2 SPM affects no shipped output. +7% packing (4.37 → 4.695) doesn't justify churn for a track that lost dual-policy in §26. **Recommendation for any future Track C rebuild:** `bpe_64k_bf` or `unigram_64k_bf`.
+
+Artifacts: `data/analysis/tokenizer_matrix.json` (35-model bench), `data/analysis/tokenizer_matrix_manifest.json` (training manifest), `data/models/tokenizers/sentencepiece_legal_v2_*.{model,vocab}`.
 
 ### 1.3 Integration strategy (two tracks)
 
@@ -77,9 +95,9 @@ data/models/tokenizers/sentencepiece_legal_v2_joint_full_41000.model
 | **D (production)** | Keep NLLB native tokenizer; adapt **model** with LoRA | **Shipped** (A2) |
 | **C** | Domain SPM + vocab surgery / from-scratch | C0 freeze done; C1c careful extend **below** zero-shot on this budget |
 
-**Why production stays on NLLB tokenizer:** NLLB already has strong multilingual Dev packing. Domain SPM wins on raw token count, but grafting a new vocab onto a 600M pretrained model without long emb warm-up lost quality (Section 4). Token savings without quality is not useful for legal fidelity.
+**Why production stays on NLLB tokenizer:** NLLB already has strong multilingual Devanagari packing. Domain SPM wins on raw token count, but grafting a new vocab onto a 600M pretrained model without long emb warm-up lost quality (Section 4). Token savings without quality is not useful for legal fidelity.
 
-**Practical token-cost lesson for LLMs:** prefer char-aware or multilingual tokenizers over byte-level BPE for Hindi legal text; domain Unigram SP is a strong low-cost option if you control the full stack.
+**Practical token-cost lesson for LLMs:** prefer char-aware or multilingual tokenizers over byte-level BPE for Hindi legal text; domain SentencePiece (Unigram OR BPE -- they tie) with `byte_fallback` is a strong low-cost option if you control the full stack.
 
 ---
 
