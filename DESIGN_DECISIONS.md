@@ -33,6 +33,8 @@ All 4 text-layer tools extract the **same underlying glyph stream** (identical D
 **Initial decision:** Keep `pdftotext` for now.
 **Final decision (2025-07-25):** Switched to **Tesseract OCR** for all 30 Hindi PDFs.
 
+**Correction (2026-08-02, §34):** Doc 6's `preprocessed/` file later regressed to text-layer output (byte-identical to degraded `clean/6.txt`). Re-OCR restored 6,027 Dev chars. Docs 14/22/25/26 re-OCR was idempotent. See §34.
+
 **Why the switch:** After full benchmarking, pdftotext's ligature decomposition (e.g., `प्रति वेद्य` vs `प्रतिवेद्य`, `सिसविवल` vs `सिविल`) proved too severe. These spacing artifacts affect every Hindi word with conjunct characters  --  roughly 60-70% of common Hindi words. Fixing them deterministically would require a Devanagari ligature grammar, which is non-trivial. Tesseract OCR produces correct ligatures out of the box.
 
 **Rationale for Tesseract OCR:**
@@ -1139,3 +1141,68 @@ Reasons:
 - 35 model+vocab pairs: `data/models/tokenizers/sentencepiece_legal_v2_v2_*.model` (joint variants pulled local; hi variants stayed on H200 -- MT-unusable)
 - Full bench: `data/analysis/tokenizer_matrix.json`
 - Training manifest: `data/analysis/tokenizer_matrix_manifest.json`
+
+---
+
+## 34. Re-OCR docs 6/14/22/25/26 after text-layer regression (doc 6)
+
+**Date:** 2026-08-02
+
+**Context:** Independent verification found `data/hindi/preprocessed/6.txt` byte-identical to degraded text-layer `clean/6.txt` (4,657 Dev chars; mid-word ligature splits such as `भार ीय`, `सिसविवल`). DESIGN §1 claimed Tesseract for all Hindi and for the CORRUPTED set, but doc 6's working corpus (segmented + all 36 train pairs) was text-layer junk. Docs 14/22/25/26 already matched Tesseract-quality text (re-OCR was idempotent).
+
+**Actions:**
+1. Tesseract re-OCR (`--doc-ids 6 14 22 25 26`): doc 6 -> **6,027** Dev chars; ligatures fixed (`भारतीय सर्वोच्च न्यायालय`, `सिविल`).
+2. Text-layer backup under `data/hindi/preprocessed/_backup_textlayer_20260802/`.
+3. Re-segment HI only for those docs; re-align with **merge** so other 25 docs' pairs are kept.
+4. Rebuild `data/processed/{train,dev,test}.jsonl` via frozen Policy-I doc IDs (`src.config`).
+5. Rebuild Stage B' replay mix (`stage_b_Bp_a1136_r126_f0.9.jsonl`) from the new train.jsonl.
+
+**Code:**
+- `align_sentences.run(..., merge=)` -- partial `--doc-ids` merges into `all.jsonl` instead of wiping other docs.
+- `output_format.run` prefers `TRAIN_DOC_IDS` / `DEV_DOC_IDS` / `TEST_DOC_IDS` over reshuffle when the 30-doc set is present.
+- `segment_sentences` honors `--lang`.
+
+**Pair counts unchanged** (1458 total; doc 6 still 36 pairs) but HI refs for doc 6 are OCR body text. EN side still body-only clean files (unchanged content-mismatch design).
+
+**Not re-run:** Track D A2 / B / B' / DoRA training or COMET rescoring. Shipped A2 scores were measured against the previous HI refs (doc 6 text-layer). Retrain/rescore is a separate decision if dual-policy numbers must reflect the repaired refs.
+
+**Regression tests:** `tests/preprocessing/test_corrupted_docs_ocr.py` (OCR floors + no text-layer markers on doc 6; align merge unit test).
+
+---
+
+## 35. Preprocessing tests were data-mutating
+
+**Date:** 2026-08-02
+
+**Context:** Re-running the test suite after §34 reverted the doc-6 OCR fix. Root cause: the preprocessing tests wrote into the real data tree, not tmp dirs.
+
+**Evidence:**
+- `test_reextract_pdfs.py::test_pdftotext_backend_works` calls `reextract_single(6, backend='pdftotext')`, which saves straight into `data/hindi/preprocessed/6.txt` (`reextract_pdfs.py` `out_path = HI_PREPROCESSED_DIR / f'{doc_id}.txt'`). The pdftotext text-layer output (4,657 Dev chars) overwrote the §34 OCR fix (6,027).
+- `test_reextract_*` and `test_apply_copies_files` wrote into real `preprocessed/`/`clean/`.
+- `test_segment_sentences.py::test_run_all` rewrote all 60 `segmented/*.txt`.
+- `test_output_format.py::test_output_files_exist` regenerated `data/processed/` (gitignored, so harmless, but still real-data writes).
+
+**Decision:** all reextract/segment/output-format tests that write now monkeypatch their output dirs (`HI_PREPROCESSED_DIR`, `HI_CLEAN_DIR`, `OUTPUT_DIRS`, `OUTPUT_DIR`) to `tmp_path`. Reads of committed artifacts stay on real paths.
+
+**Verification:** full `pytest tests/` (157 tests) green; `preprocessed/6.txt` and `segmented/6.txt` byte-identical before/after the run; doc-6 OCR fix intact.
+
+---
+
+## 36. OCR invariant: preprocessed must be Tesseract, enforced in code
+
+**Date:** 2026-08-02
+
+**Context:** §34 relied on a manual backup dir (`_backup_textlayer_20260802/`) and a single hardcoded Homebrew path for `pdftotext`. Both were fragile: nothing prevented a silent re-write of text-layer output into `preprocessed/`, and the tool path broke off-Homebrew machines.
+
+**Changes:**
+- `src/config.py`: `PDFTOTEXT_CMD = shutil.which('pdftotext')` (None if absent); `extract_with_pdftotext` returns `None` in that case.
+- `src/preprocessing/reextract_pdfs.py`:
+  - `TEXTLAYER_MARKERS` (mid-word ligature splits proven to be text-layer glyph streams) and `MIN_OCR_DEV` (per-doc Devanagari floors; doc 6 text-layer was 4,657 vs OCR 6,027).
+  - `verify_ocr_quality(doc_ids)` returns issues for any file failing the floors or containing markers.
+  - `run()` verifies its own output and moves failing docs into `failed`; `--verify-ocr` CLI exits 1 on issues.
+- `Makefile`: `verify-ocr` gate.
+- `tests/preprocessing/test_corrupted_docs_ocr.py`: imports the shared constants instead of redefining them; added a negative test proving degraded text-layer input is flagged.
+
+**Why floors + markers instead of trusting the file:** Devanagari char count alone cannot distinguish OCR from text-layer for docs 14/22/25/26 (identical counts in both). The marker set (which only text-layer output produces, e.g. `सिसविवल`, `भार ीय`) catches the distinctive degradation on doc 6; floors cover the generic "too few Dev chars" case for all five.
+
+**Verification:** `make verify-ocr` exits 0 on the real corpus; negative tests confirm a degraded `6.txt` is flagged by both the floor and marker paths, and `run(backend='pdftotext')` reports doc 6 as failed. Full suite (160 tests) green; preprocessed/segmented files byte-identical after the run.

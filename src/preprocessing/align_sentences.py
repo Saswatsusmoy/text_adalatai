@@ -230,33 +230,66 @@ def process_doc(doc_id: int, verbose: bool = False) -> list[dict]:
     return results
 
 
-def run(doc_ids: list[int] | None = None, verbose: bool = True) -> dict:
-    if doc_ids is None:
-        doc_ids = DOC_IDS
+def _load_all_pairs(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    pairs = []
+    with open(path, encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                pairs.append(json.loads(line))
+    return pairs
 
-    all_pairs = []
+
+def run(
+    doc_ids: list[int] | None = None,
+    verbose: bool = True,
+    merge: bool | None = None,
+) -> dict:
+    if doc_ids is None:
+        doc_ids = list(DOC_IDS)
+    refreshed = set(doc_ids)
+    # Partial re-align keeps other docs' pairs (full run replaces the file).
+    if merge is None:
+        merge = refreshed != set(DOC_IDS)
+
+    new_pairs = []
     for doc_id in doc_ids:
-        pairs = process_doc(doc_id, verbose=verbose)
-        all_pairs.extend(pairs)
+        new_pairs.extend(process_doc(doc_id, verbose=verbose))
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     output_path = OUTPUT_DIR / 'all.jsonl'
+
+    if merge:
+        kept = [p for p in _load_all_pairs(output_path) if p.get('doc_id') not in refreshed]
+        all_pairs = kept + new_pairs
+        all_pairs.sort(key=lambda p: (int(p['doc_id']), -float(p.get('similarity', 0))))
+    else:
+        all_pairs = new_pairs
+
     with open(output_path, 'w', encoding='utf-8') as f:
         for pair in all_pairs:
             f.write(json.dumps(pair, ensure_ascii=False) + '\n')
 
     if verbose:
         print(f'\nTotal: {len(all_pairs)} aligned pairs -> {output_path}')
-
-        # Stats
+        if merge:
+            print(f'  merge: refreshed docs {sorted(refreshed)} ({len(new_pairs)} new pairs)')
         sims = [p['similarity'] for p in all_pairs]
         en_lens = [len(p['en_text']) for p in all_pairs]
         hi_lens = [len(p['hi_text']) for p in all_pairs]
-        print(f'  Avg similarity: {sum(sims) / len(sims):.3f}')
-        print(f'  Avg EN length: {sum(en_lens) / len(en_lens):.1f} chars')
-        print(f'  Avg HI length: {sum(hi_lens) / len(hi_lens):.1f} chars')
+        if sims:
+            print(f'  Avg similarity: {sum(sims) / len(sims):.3f}')
+            print(f'  Avg EN length: {sum(en_lens) / len(en_lens):.1f} chars')
+            print(f'  Avg HI length: {sum(hi_lens) / len(hi_lens):.1f} chars')
 
-    return {'aligned': len(all_pairs), 'output': str(output_path)}
+    return {
+        'aligned': len(all_pairs),
+        'refreshed_pairs': len(new_pairs),
+        'merged': merge,
+        'output': str(output_path),
+    }
 
 
 def main():
@@ -273,13 +306,19 @@ def main():
         help='Document IDs to process (default: all 30)',
     )
     parser.add_argument(
+        '--no-merge',
+        action='store_true',
+        help='Rewrite all.jsonl with only the given docs (default merges when subset)',
+    )
+    parser.add_argument(
         '--quiet',
         action='store_true',
         help='Suppress detailed output',
     )
     args = parser.parse_args()
 
-    run(args.doc_ids, verbose=not args.quiet)
+    merge = False if args.no_merge else None
+    run(args.doc_ids, verbose=not args.quiet, merge=merge)
 
 
 if __name__ == '__main__':

@@ -2,6 +2,39 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **OCR invariant now enforced in code, not a manual backup dir** (DESIGN §36):
+  - `PDFTOTEXT_CMD` resolved via `shutil.which('pdftotext')` (was hardcoded
+    `/opt/homebrew/bin/pdftotext`); `extract_with_pdftotext` returns `None` when absent.
+  - `verify_ocr_quality()` checks CORRUPTED docs for Devanagari floors +
+    text-layer ligature markers; `run()` flags any write that fails the check;
+    `--verify-ocr` CLI mode exits 1 on issues; `make verify-ocr` gate added.
+  - Regression test uses the shared `MIN_OCR_DEV` / `TEXTLAYER_MARKERS` constants
+    instead of duplicating them; negative test proves degraded files are caught.
+
+- **Preprocessing tests were data-mutating** (DESIGN §35):
+  - `test_reextract_pdfs.py` wrote OCR/text-layer output into the real
+    `data/hindi/preprocessed/` and `clean/` (e.g. `test_pdftotext_backend_works`
+    overwrote doc 6 with degraded text-layer text), and `test_segment_sentences.py`
+    rewrote all `segmented/*.txt`. Running the suite destroyed the §34 OCR fix.
+  - All reextract/segment/output tests now redirect writes to `tmp_path`
+    (`monkeypatch` on `HI_PREPROCESSED_DIR`/`HI_CLEAN_DIR`/`OUTPUT_DIRS`/`OUTPUT_DIR`).
+  - Verified: full `pytest tests/` passes and `preprocessed/6.txt` +
+    `segmented/6.txt` are byte-identical before/after.
+
+- **Doc 6 (and CORRUPTED set) Hindi was text-layer, not Tesseract** (DESIGN §34):
+  - `data/hindi/preprocessed/6.txt` was byte-identical to degraded `clean/6.txt` (4,657 Dev chars; mid-word splits `भार ीय` / `सिसविवल`). Fresh Tesseract: **6,027** Dev chars; ligatures restored.
+  - Re-OCR docs 6, 14, 22, 25, 26; text-layer backup in `data/hindi/preprocessed/_backup_textlayer_20260802/`. Docs 14/22/25/26 were already OCR-equivalent (idempotent rewrite).
+  - Re-segmented HI for those docs; re-aligned with merge (1458 pairs total unchanged; doc 6 still 36 pairs, HI refs now OCR).
+  - Rebuilt `data/processed/{train,dev,test}.jsonl` on frozen Policy-I doc IDs.
+  - Rebuilt Stage B' mix `stage_b_Bp_a1136_r126_f0.9.jsonl` so assignment rows match repaired HI.
+  - `align_sentences.run` merges when `--doc-ids` is a subset (avoids wiping other docs).
+  - `output_format.run` uses frozen `TRAIN/DEV/TEST_DOC_IDS` when the full 30-doc set is present.
+  - `segment_sentences` honors `--lang`.
+  - Tests: `tests/preprocessing/test_corrupted_docs_ocr.py`.
+  - **Not** re-trained A2 or re-scored COMET; prior metrics used the old doc-6 HI refs.
+
 ### Added
 
 - **Full tokenizer matrix (35 configs)** (DESIGN §33, EXPERIMENTS §4.5):

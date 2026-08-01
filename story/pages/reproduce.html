@@ -21,7 +21,8 @@ make lint
 make test</pre>
 
     <h2>Phase 1 -- assignment data</h2>
-    <pre class="codeblock">make preprocess
+    <pre class="codeblock">make verify-ocr            # gate: preprocessed must be Tesseract OCR (exit 1 on issues)
+make preprocess
 # OCR -> join -> segment -> align -> train/dev/test
 # Expect ~1458 pairs, 1136/132/190 split</pre>
 

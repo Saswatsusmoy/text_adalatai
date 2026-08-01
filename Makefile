@@ -1,4 +1,4 @@
-.PHONY: install install-dev venv reextract join segment align output preprocess \
+.PHONY: install install-dev venv reextract verify-ocr join segment align output preprocess \
 	external-download external-ingest external-eval-split \
 	tokenizer-prepare tokenizer-train-16k tokenizer-train-32k tokenizer-train-41k \
 	tokenizer-train-all tokenizer-train tokenizer-bench \
@@ -38,6 +38,10 @@ venv:
 reextract:
 	PYTHONPATH=. python3 src/preprocessing/reextract_pdfs.py --all
 	PYTHONPATH=. python3 src/preprocessing/reextract_pdfs.py --compare-all
+
+# Gate: preprocessed Hindi must be Tesseract OCR (fails on text-layer regression)
+verify-ocr:
+	PYTHONPATH=. python3 src/preprocessing/reextract_pdfs.py --verify-ocr
 
 join:
 	PYTHONPATH=. python3 src/preprocessing/join_lines.py

@@ -1,5 +1,8 @@
 # Local-only notes, plans, research (never commit) - use .git/info/exclude
 
+# Orca / agent runtime state
+.claude/
+
 # OS
 .DS_Store
 .AppleDouble

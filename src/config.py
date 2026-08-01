@@ -1,3 +1,4 @@
+import shutil
 from pathlib import Path
 
 
@@ -49,7 +50,8 @@ TRAIN_DOC_IDS = [
 DEV_DOC_IDS = [8, 9, 24]
 TEST_DOC_IDS = [1, 4, 21]
 
-PDFTOTEXT_CMD = '/opt/homebrew/bin/pdftotext'
+# Resolve pdftotext from PATH so configs work off-Homebrew machines; None if absent.
+PDFTOTEXT_CMD = shutil.which('pdftotext')
 
 DEVANAGARI_START = 0x0900
 DEVANAGARI_END = 0x097F

@@ -1,6 +1,4 @@
-from pathlib import Path
-
-from src.config import CORRUPTED_DOC_IDS, HI_CLEAN_DIR, HI_ORIGINAL_DIR, HI_PREPROCESSED_DIR
+from src.config import CORRUPTED_DOC_IDS, HI_ORIGINAL_DIR, HI_PREPROCESSED_DIR
 from src.preprocessing.reextract_pdfs import (
     BACKENDS,
     compare_all_with_originals,
@@ -22,18 +20,20 @@ class TestExtraction:
         assert count_devanagari(result) > 0
 
     def test_pdftotext_available(self):
-        assert Path('/opt/homebrew/bin/pdftotext').exists()
+        assert extract_with_pdftotext(HI_ORIGINAL_DIR / '6.pdf') is not None
 
     def test_corrupted_pdfs_exist(self):
         for doc_id in CORRUPTED_DOC_IDS:
             assert (HI_ORIGINAL_DIR / f'{doc_id}.pdf').exists(), f'Doc {doc_id} PDF missing'
 
-    def test_reextract_single_returns_devanagari(self):
+    def test_reextract_single_returns_devanagari(self, tmp_path, monkeypatch):
+        monkeypatch.setattr('src.preprocessing.reextract_pdfs.HI_PREPROCESSED_DIR', tmp_path)
         result = reextract_single(6, backend='tesseract', verbose=False)
         assert result is not None
         assert result['devanagari_chars'] > 0
 
-    def test_reextract_all_corrupted(self):
+    def test_reextract_all_corrupted(self, tmp_path, monkeypatch):
+        monkeypatch.setattr('src.preprocessing.reextract_pdfs.HI_PREPROCESSED_DIR', tmp_path)
         results = run(backend='tesseract', verbose=False)
         assert len(results['re_extracted']) == 5
         assert len(results['failed']) == 0
@@ -100,29 +100,28 @@ class TestValidation:
 
 
 class TestApply:
-    def test_apply_copies_files(self):
+    def test_apply_copies_files(self, tmp_path, monkeypatch):
         from src.preprocessing.reextract_pdfs import apply
 
-        originals = {}
-        for doc_id in CORRUPTED_DOC_IDS:
-            f = HI_CLEAN_DIR / f'{doc_id}.txt'
-            if f.exists():
-                originals[doc_id] = f.read_text(encoding='utf-8', errors='replace')
+        pre_dir = tmp_path / 'preprocessed'
+        clean_dir = tmp_path / 'clean'
+        pre_dir.mkdir(parents=True)
+        clean_dir.mkdir(parents=True)
+        monkeypatch.setattr('src.preprocessing.reextract_pdfs.HI_PREPROCESSED_DIR', pre_dir)
+        monkeypatch.setattr('src.preprocessing.reextract_pdfs.HI_CLEAN_DIR', clean_dir)
 
-        apply(verbose=False)
+        (pre_dir / '6.txt').write_text('भारतीय सर्वोच्च न्यायालय।\n', encoding='utf-8')
+        (pre_dir / '14.txt').write_text('न्यायमूर्ति।\n', encoding='utf-8')
 
-        for doc_id in CORRUPTED_DOC_IDS:
-            clean_file = HI_CLEAN_DIR / f'{doc_id}.txt'
-            reextracted_file = HI_PREPROCESSED_DIR / f'{doc_id}.txt'
-            clean_text = clean_file.read_text(encoding='utf-8')
-            reextracted_text = reextracted_file.read_text(encoding='utf-8')
-            assert has_devanagari(clean_text), (
-                f'Doc {doc_id}: clean file still has no Devanagari after apply'
-            )
-            assert clean_text == reextracted_text, f'Doc {doc_id}: content mismatch after apply'
-
-        for doc_id, content in originals.items():
-            (HI_CLEAN_DIR / f'{doc_id}.txt').write_text(content, encoding='utf-8')
+        result = apply(doc_ids=[6, 14], verbose=False)
+        assert result['copied'] == [6, 14]
+        assert result['missing'] == []
+        assert (clean_dir / '6.txt').read_text(encoding='utf-8') == (pre_dir / '6.txt').read_text(
+            encoding='utf-8'
+        )
+        assert (clean_dir / '14.txt').read_text(encoding='utf-8') == (pre_dir / '14.txt').read_text(
+            encoding='utf-8'
+        )
 
 
 class TestBackends:
@@ -130,7 +129,8 @@ class TestBackends:
         assert 'tesseract' in BACKENDS
         assert 'pdftotext' in BACKENDS
 
-    def test_pdftotext_backend_works(self):
+    def test_pdftotext_backend_works(self, tmp_path, monkeypatch):
+        monkeypatch.setattr('src.preprocessing.reextract_pdfs.HI_PREPROCESSED_DIR', tmp_path)
         result = reextract_single(6, backend='pdftotext', verbose=False)
         assert result is not None
         assert result['devanagari_chars'] > 0

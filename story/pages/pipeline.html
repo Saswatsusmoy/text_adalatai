@@ -44,6 +44,16 @@
     </div>
     <p><strong>Decision:</strong> default backend Tesseract <code>-l hin --psm 6</code> at 300 DPI.
       Staging under <code>data/hindi/preprocessed/</code> so originals are never overwritten.</p>
+    <div class="callout warn">
+      <div class="label">OCR invariant is enforced, not assumed</div>
+      <p>
+        A regression once put text-layer output back into <code>preprocessed/6.txt</code> (4,657 Dev
+        chars vs 6,027 for OCR). Now <code>reextract_pdfs.py</code> verifies its own output against
+        Devanagari floors + text-layer markers, <code>run()</code> flags degraded writes as failed,
+        and <code>make verify-ocr</code> is a hard gate (exits 1 on issues). <code>pdftotext</code>
+        is resolved from <code>PATH</code>, not a hardcoded Homebrew path.
+      </p>
+    </div>
 
     <h3>2. English line join -- <code>join_lines.py</code></h3>
     <p><strong>Why:</strong> PDF extraction hard-wraps English mid-sentence (~44-74 chars/line).</p>

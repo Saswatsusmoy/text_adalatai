@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 from src.preprocessing.output_format import (
     build_metadata,
@@ -73,13 +72,14 @@ class TestReport:
 
 
 class TestRun:
-    def test_output_files_exist(self):
+    def test_output_files_exist(self, tmp_path, monkeypatch):
+        monkeypatch.setattr('src.preprocessing.output_format.OUTPUT_DIR', tmp_path)
         run(verbose=False)
-        assert (Path('data/processed/train.jsonl')).exists()
-        assert (Path('data/processed/dev.jsonl')).exists()
-        assert (Path('data/processed/test.jsonl')).exists()
-        assert (Path('data/processed/metadata.json')).exists()
-        assert (Path('data/processed/alignment_report.json')).exists()
+        assert (tmp_path / 'train.jsonl').exists()
+        assert (tmp_path / 'dev.jsonl').exists()
+        assert (tmp_path / 'test.jsonl').exists()
+        assert (tmp_path / 'metadata.json').exists()
+        assert (tmp_path / 'alignment_report.json').exists()
 
     def test_total_pairs_preserved(self):
         with open('data/processed/train.jsonl') as f:

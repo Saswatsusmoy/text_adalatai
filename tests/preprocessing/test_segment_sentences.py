@@ -1,3 +1,4 @@
+from src.preprocessing import segment_sentences as seg_mod
 from src.preprocessing.segment_sentences import (
     has_danda,
     process_doc,
@@ -88,12 +89,14 @@ class TestAutoDetection:
 
 
 class TestProcessDoc:
-    def test_process_en_doc(self):
+    def test_process_en_doc(self, tmp_path, monkeypatch):
+        monkeypatch.setitem(seg_mod.OUTPUT_DIRS, 'en', tmp_path / 'en')
         result = process_doc(1, 'en', verbose=False)
         assert result is not None
         assert result['sentences'] > 0
 
-    def test_process_hi_doc(self):
+    def test_process_hi_doc(self, tmp_path, monkeypatch):
+        monkeypatch.setitem(seg_mod.OUTPUT_DIRS, 'hi', tmp_path / 'hi')
         result = process_doc(1, 'hi', verbose=False)
         assert result is not None
         assert result['sentences'] > 0
@@ -118,6 +121,8 @@ class TestProcessDoc:
 
 
 class TestRun:
-    def test_run_all(self):
+    def test_run_all(self, tmp_path, monkeypatch):
+        monkeypatch.setitem(seg_mod.OUTPUT_DIRS, 'en', tmp_path / 'en')
+        monkeypatch.setitem(seg_mod.OUTPUT_DIRS, 'hi', tmp_path / 'hi')
         results = run(verbose=False)
         assert len(results['processed']) == 60  # 30 EN + 30 HI

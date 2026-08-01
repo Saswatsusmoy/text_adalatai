@@ -23,6 +23,16 @@
             <td>Tesseract OCR default</td>
           </tr>
           <tr>
+            <td>Doc 6 text-layer regression</td>
+            <td>Working corpus had degraded text-layer output (4,657 Dev chars) despite OCR being the documented method</td>
+            <td>Re-OCR'd + OCR-quality invariant enforced (<code>verify_ocr_quality</code>, <code>make verify-ocr</code>)</td>
+          </tr>
+          <tr>
+            <td>Data-mutating preprocessing tests</td>
+            <td>Re-extract/segment tests wrote into real <code>preprocessed/</code>, <code>clean/</code>, <code>segmented/</code>; running the suite destroyed the OCR fix</td>
+            <td>All such tests write to <code>tmp_path</code>; suite no longer touches tracked data</td>
+          </tr>
+          <tr>
             <td>Naive OCR <code>li.</code> fix</td>
             <td>Would corrupt S.L.P. and judge initials</td>
             <td>Never ship</td>
@@ -77,6 +87,7 @@
       <li>Hold out external domain data before celebrating assignment-test gains.</li>
       <li>Tokenizer packing and MT quality are different objectives; do not conflate them.</li>
       <li>Checkpoint what you actually train (embedding rows outside PEFT adapters).</li>
+      <li>Make data-quality invariants a code-enforced gate, and keep tests from writing into the real data tree.</li>
     </ul>
   </div>
   <script src="../js/site.js"></script>

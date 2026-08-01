@@ -128,12 +128,18 @@ def process_doc(doc_id: int, lang: str, verbose: bool = False) -> dict | None:
     return {'doc_id': doc_id, 'lang': lang, 'sentences': sent_count}
 
 
-def run(doc_ids: list[int] | None = None, verbose: bool = True) -> dict:
+def run(
+    doc_ids: list[int] | None = None,
+    verbose: bool = True,
+    langs: list[str] | None = None,
+) -> dict:
     if doc_ids is None:
         doc_ids = DOC_IDS
+    if langs is None:
+        langs = ['en', 'hi']
 
     results = []
-    for lang in ['en', 'hi']:
+    for lang in langs:
         for doc_id in doc_ids:
             r = process_doc(doc_id, lang, verbose=verbose)
             if r:
@@ -173,7 +179,8 @@ def main():
     )
     args = parser.parse_args()
 
-    run(args.doc_ids, verbose=not args.quiet)
+    langs = ['en', 'hi'] if args.lang == 'both' else [args.lang]
+    run(args.doc_ids, verbose=not args.quiet, langs=langs)
 
 
 if __name__ == '__main__':

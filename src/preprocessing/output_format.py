@@ -11,6 +11,8 @@ import json
 import random
 from pathlib import Path
 
+from src.config import DEV_DOC_IDS, TEST_DOC_IDS, TRAIN_DOC_IDS
+
 
 ALIGNED_DIR = Path('data/aligned')
 OUTPUT_DIR = Path('data/processed')
@@ -42,6 +44,19 @@ def split_docs(doc_ids: list[int]) -> dict[str, list[int]]:
     test = doc_ids[n_train + n_dev :]
 
     return {'train': sorted(train), 'dev': sorted(dev), 'test': sorted(test)}
+
+
+def frozen_splits(doc_ids: list[int] | None = None) -> dict[str, list[int]]:
+    """Document-level split frozen in src.config (seed-42 historical shuffle)."""
+    present = set(doc_ids) if doc_ids is not None else None
+    splits = {
+        'train': list(TRAIN_DOC_IDS),
+        'dev': list(DEV_DOC_IDS),
+        'test': list(TEST_DOC_IDS),
+    }
+    if present is None:
+        return splits
+    return {name: [d for d in ids if d in present] for name, ids in splits.items()}
 
 
 def build_metadata(pairs: list[dict], splits: dict[str, list[int]]) -> dict:
@@ -149,10 +164,16 @@ def run(verbose: bool = True) -> dict:
         return {'status': 'no_data'}
 
     all_doc_ids = sorted(set(p['doc_id'] for p in pairs))
-
-    random.seed(RANDOM_SEED)
-    random.shuffle(all_doc_ids)
-    splits = split_docs(all_doc_ids)
+    # Prefer frozen Policy-I doc IDs so re-align/rebuild never reshuffles assignment splits.
+    frozen = frozen_splits(all_doc_ids)
+    covered = set(frozen['train']) | set(frozen['dev']) | set(frozen['test'])
+    if covered == set(all_doc_ids):
+        splits = frozen
+    else:
+        random.seed(RANDOM_SEED)
+        shuffled = list(all_doc_ids)
+        random.shuffle(shuffled)
+        splits = split_docs(shuffled)
 
     split_name_for_doc = {}
     for split_name, doc_ids in splits.items():

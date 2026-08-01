@@ -9,6 +9,7 @@ Output: data/hindi/preprocessed/{doc_id}.txt
 """
 
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -27,6 +28,8 @@ from src.utils.validation import count_devanagari
 
 def extract_with_pdftotext(pdf_path: Path) -> str | None:
     if not pdf_path.exists():
+        return None
+    if PDFTOTEXT_CMD is None:
         return None
     result = subprocess.run(
         [PDFTOTEXT_CMD, str(pdf_path), '-'],
@@ -93,6 +96,49 @@ BACKENDS = {
     'tesseract': extract_with_tesseract,
 }
 
+# Mid-word text-layer ligature splits (pdftotext glyph stream on doc 6). Presence
+# in a preprocessed file proves it is text-layer output, not Tesseract OCR.
+TEXTLAYER_MARKERS = (
+    'सिसविवल',
+    'भार ीय',
+    'सव च्च',
+    'अति कारिर',
+    'प्रति वेद्य',
+)
+
+# Minimum Devanagari chars per CORRUPTED doc: text-layer extraction measures lower
+# than Tesseract on every corrupted PDF (e.g. doc 6: 4657 text-layer vs 6027 OCR).
+MIN_OCR_DEV = {6: 5500, 14: 7000, 22: 8500, 25: 14500, 26: 5500}
+
+
+def verify_ocr_quality(doc_ids: list[int] | None = None, verbose: bool = True) -> dict:
+    """Report preprocessed files that are not Tesseract OCR (degraded text-layer)."""
+    if doc_ids is None:
+        doc_ids = CORRUPTED_DOC_IDS
+    issues = []
+    for doc_id in doc_ids:
+        path = HI_PREPROCESSED_DIR / f'{doc_id}.txt'
+        if not path.exists():
+            issues.append({'doc_id': doc_id, 'issue': 'missing'})
+            if verbose:
+                print(f'  [ MISSING  ] Doc {doc_id:2d}: no preprocessed file')
+            continue
+        text = path.read_text(encoding='utf-8', errors='replace')
+        dev = count_devanagari(text)
+        doc_issues = []
+        if dev < MIN_OCR_DEV.get(doc_id, 0):
+            doc_issues.append(f'Dev chars {dev} below OCR floor')
+        for marker in TEXTLAYER_MARKERS:
+            if marker in text:
+                doc_issues.append(f'text-layer marker {marker!r}')
+                break
+        for issue in doc_issues:
+            issues.append({'doc_id': doc_id, 'issue': issue})
+        if verbose:
+            status = 'OK' if not doc_issues else 'DEGRADED'
+            print(f'  [ {status:8s}] Doc {doc_id:2d}: {dev} Devanagari chars')
+    return {'checked': doc_ids, 'issues': issues}
+
 
 def reextract_single(doc_id: int, backend: str = 'tesseract', verbose: bool = True) -> dict | None:
     pdf_path = HI_ORIGINAL_DIR / f'{doc_id}.pdf'
@@ -141,6 +187,21 @@ def run(doc_ids: list[int] | None = None, backend: str = 'tesseract', verbose: b
             results['re_extracted'].append(result)
         else:
             results['failed'].append(doc_id)
+
+    # Enforce the invariant: preprocessed must be Tesseract OCR. Text-layer output
+    # (pdftotext backend, or a corrupted file) fails OCR quality and counts as failed.
+    if results['re_extracted']:
+        if verbose:
+            print()
+            print('Verifying OCR quality (preprocessed must be Tesseract)...')
+        qc = verify_ocr_quality([r['doc_id'] for r in results['re_extracted']], verbose=verbose)
+        for issue in qc['issues']:
+            doc_id = issue['doc_id']
+            if doc_id not in results['failed']:
+                results['failed'].append(doc_id)
+        results['quality_issues'] = qc['issues']
+        if verbose:
+            print()
 
     return results
 
@@ -323,6 +384,11 @@ def main():
         help='Copy re-extracted files to clean/ directory',
     )
     parser.add_argument(
+        '--verify-ocr',
+        action='store_true',
+        help='Verify preprocessed files are Tesseract OCR (not text-layer), exit 1 on issues',
+    )
+    parser.add_argument(
         '--quiet',
         action='store_true',
         help='Suppress detailed output',
@@ -330,6 +396,20 @@ def main():
 
     args = parser.parse_args()
     verbose = not args.quiet
+
+    if args.verify_ocr:
+        if verbose:
+            print(f'Verifying OCR quality for {len(CORRUPTED_DOC_IDS)} corrupted docs...\n')
+        qc = verify_ocr_quality(verbose=verbose)
+        if qc['issues']:
+            if verbose:
+                print()
+                print(f'FAIL: {len(qc["issues"])} OCR quality issue(s)')
+            sys.exit(1)
+        if verbose:
+            print()
+            print('OK: all corrupted preprocessed files are Tesseract OCR')
+        return
 
     if args.scan:
         if verbose:
