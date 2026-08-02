@@ -1235,7 +1235,7 @@ Reasons:
 |--------|-------:|------:|
 | Preprocessed HI non-empty lines | 5,117 | 1,749 |
 | Segmented HI sentences | 7,418 | 3,221 |
-| Segmented HI danda-less | 4,501 (60.7%) | 1,299 (40.3%) |
+| Segmented HI danda-less | 4,501 (60.7%) | 1,118 (34.7%) |
 | Aligned pairs | 1,458 | 1,422 |
 | Aligned HI without danda | 806 (55.3%) | 155 (10.9%) |
 | Avg LaBSE similarity | 0.70 | 0.779 |

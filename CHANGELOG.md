@@ -4,6 +4,17 @@
 
 ### Fixed
 
+- **Story data-pipeline page made comprehensive** (DESIGN §37):
+  - Added inputs table (PDFs / EN clean / legacy clean), EN/HI body-vs-full-doc asymmetry rationale.
+  - Deepened every step: doc-6 text-layer regression story + backup, OCR invariant gate,
+    data-derived EN proper-noun method, Hindi join rule rationale (vocabulary vs length,
+    verified fixed point), over-segmentation design, alignment method (mutual-best vs DP,
+    LaBSE vs BGE-M3, current similarity distribution, residual QC noise), frozen-split
+    rationale, and merge-safe partial re-align.
+  - Corrected segmented danda-less fraction 40.3% -> **34.7%** (1,118/3,221) in
+    DESIGN_DECISIONS, CHANGELOG, and the story table -- the tracked files verify 34.7%,
+    the earlier 40.3% figure was a mis-print from an intermediate run.
+
 - **Hindi OCR hard-wraps now joined (danda-aware) before segmentation** (DESIGN §37):
   - New `src/preprocessing/join_hindi_lines.py` (mirror of `join_lines.py`): joins a line to
     the next when it does not end in a danda (।) and the join does not cross a blank line, a
@@ -15,7 +26,7 @@
   - Wired as `join_hi` into `make preprocess` and `run_pipeline.py` (`reextract -> join ->
     join_hi -> segment -> align -> output`).
   - Effect on real corpus: preprocessed HI lines 5,117 -> 1,749; segmented HI sentences
-    7,418 -> 3,221 with danda-less fraction 60.7% -> 40.3% (remaining are headers /
+    7,418 -> 3,221 with danda-less fraction 60.7% -> 34.7% (remaining are headers /
     citations / colon intros); aligned pairs 1,458 -> 1,422 with HI-without-danda fraction
     55.3% -> 10.9%; avg LaBSE similarity 0.70 -> 0.779; train/dev/test 1,136/132/190 ->
     1,110/128/184.

@@ -14,15 +14,32 @@
       is a separate Stage A path (next pages) and is not required to finish this phase.
     </p>
 
+    <h2>Inputs</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Source</th><th>What it is</th><th>Role in pipeline</th></tr></thead>
+        <tbody>
+          <tr><td><code>data/hindi/original/*.pdf</code></td><td>30 Hindi judgment PDFs (custom font encoding)</td><td>OCR input for the Hindi working corpus</td></tr>
+          <tr><td><code>data/english/clean/*.txt</code></td><td>Numbered body paragraphs only (no headers/parties)</td><td>EN input; PDF text layer is unreliable for Hindi but fine for English</td></tr>
+          <tr><td><code>data/hindi/clean/*.txt</code></td><td>Legacy Windows-extracted text; 5 docs corrupted (<code>?</code> glyphs)</td><td>Not pipeline input; kept for audit / comparison</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p><strong>Asymmetry by design:</strong> EN is body-only (clean files), HI is full document OCR (headers + parties + body). The alignment filter keeps only 1-1 mutual-best correspondences, so Hindi header sentences become orphans and never reach training. The model never sees document structure -- it gets independent (en, hi) pairs, so the asymmetry does not leak into translation.</p>
+
     <h2>End-to-end flow</h2>
     <pre class="codeblock">PDF EN/HI
   -&gt; reextract_pdfs.py      # Tesseract OCR for Hindi (not PDF text layer)
   -&gt; join_lines.py          # EN hard wraps + proper nouns
-  -&gt; join_hindi_lines.py    # HI OCR hard wraps (danda-aware)
+  -&gt; join_hindi_lines.py    # HI OCR hard wraps (danda-aware, idempotent)
   -&gt; segment_sentences.py   # spaCy EN; danda HI
   -&gt; align_sentences.py     # LaBSE mutual-best + QC filters
-  -&gt; output_format.py       # doc-level 80/10/10, seed 42
+  -&gt; output_format.py       # doc-level 80/10/10, seed 42, frozen doc IDs
   -&gt; data/processed/{train,dev,test}.jsonl</pre>
+    <p>Two hard gates protect this chain (details in the steps below):
+      <code>make verify-ocr</code> proves <code>preprocessed/</code> is Tesseract OCR, and the
+      join step is a verified fixed point, so <code>make preprocess</code> reproduces the committed
+      data byte-for-byte.</p>
 
     <h2>Step details</h2>
 
@@ -43,25 +60,48 @@
         </tbody>
       </table>
     </div>
-    <p><strong>Decision:</strong> default backend Tesseract <code>-l hin --psm 6</code> at 300 DPI.
-      Staging under <code>data/hindi/preprocessed/</code> so originals are never overwritten.</p>
+    <p><strong>Decision:</strong> default backend Tesseract <code>-l hin --psm 6</code> at 300 DPI
+      (PyMuPDF render per page). Staging under <code>data/hindi/preprocessed/</code> so originals are
+      never overwritten.</p>
+    <div class="callout warn">
+      <div class="label">The doc-6 regression (caught, fixed, guarded)</div>
+      <p>
+        Five clean files (docs 6, 14, 22, 25, 26) were originally corrupted (0 Devanagari). Doc 6's
+        working corpus later regressed to <em>text-layer</em> output -- byte-identical to the broken
+        <code>clean/6.txt</code> (4,657 Dev chars, mid-word splits like <code>भार ीय</code>,
+        <code>सिसविवल</code>) -- despite Tesseract being the documented method. A fresh re-OCR
+        restored <strong>6,027</strong> Dev chars with correct ligatures; the old text-layer version
+        is preserved under <code>data/hindi/preprocessed/_backup_textlayer_20260802/</code>. Docs
+        14/22/25/26 re-OCR was idempotent (they were never degraded).
+      </p>
+    </div>
     <div class="callout warn">
       <div class="label">OCR invariant is enforced, not assumed</div>
       <p>
-        A regression once put text-layer output back into <code>preprocessed/6.txt</code> (4,657 Dev
-        chars vs 6,027 for OCR). Now <code>reextract_pdfs.py</code> verifies its own output against
-        Devanagari floors + text-layer markers, <code>run()</code> flags degraded writes as failed,
-        and <code>make verify-ocr</code> is a hard gate (exits 1 on issues). <code>pdftotext</code>
-        is resolved from <code>PATH</code>, not a hardcoded Homebrew path.
+        Because a silent regression already happened once, <code>reextract_pdfs.py</code> now
+        verifies its own output against Devanagari floors + text-layer marker words, <code>run()</code>
+        flags degraded writes as failed, and <code>make verify-ocr</code> is a hard gate (exits 1 on
+        issues). A negative test proves degraded text-layer input is caught. <code>pdftotext</code>
+        is resolved from <code>PATH</code>, not a hardcoded Homebrew path. The tests that once wrote
+        into the real data tree now use <code>tmp_path</code>, so running the suite can no longer
+        clobber the fix.
       </p>
     </div>
 
     <h3>2. English line join -- <code>join_lines.py</code></h3>
     <p><strong>Why:</strong> PDF extraction hard-wraps English mid-sentence (~44-74 chars/line).</p>
     <p><strong>How:</strong> Heuristic join when a line ends mid-phrase and the next starts lowercase
-      or with a known proper noun. Proper nouns were mined from the corpus (34 high-frequency
-      continuation heads: Court, Appellant, Section, ...).</p>
-    <p><strong>Result:</strong> roughly 58% fewer non-empty EN lines after join.</p>
+      or with a known proper noun. The proper-noun list is <strong>data-derived, not hand-picked</strong>:
+      <code>discover_proper_nouns.py</code> scans all 30 docs for words starting continuation lines,
+      keeps heads appearing &gt;= 2 times, and cross-checks that each head is not a sentence starter.
+      Result: 34 verified heads (Court, Appellant, Section, Allahabad, ...). The 50-word hand-curated
+      list it replaced had 18 words that never occur mid-sentence (e.g. "C", "Union") and missed 12
+      real continuations (party names like Pandey, Rajbali).</p>
+    <p><strong>Rules:</strong> never join across <code>.!?</code> or a numbered/bullet item; join
+      when prev ends lowercase and next starts lowercase OR a known proper noun OR prev ends a digit
+      (e.g. <code>No.38</code>).</p>
+    <p><strong>Result:</strong> roughly 58% fewer non-empty EN lines after join (2,819 -&gt; 1,176);
+      the 13 long-line docs are untouched (zero false modifications).</p>
 
     <h3>3. Hindi line join -- <code>join_hindi_lines.py</code></h3>
     <p><strong>Why:</strong> Tesseract OCR hard-wraps Hindi mid-sentence at PDF line boundaries
@@ -90,6 +130,14 @@
       <em>exempt</em> from the numbered-item guard: a date-start line is usually a mid-sentence
       continuation (54 real cases would otherwise be missed). The step writes
       <code>preprocessed/</code> in place and is idempotent (re-running is a no-op).</p>
+    <p><strong>Why the header rule is vocabulary-based, not just length:</strong> a plain "short
+      line" cut would either over-join (absorbing <code>निर्णय</code> into a party line, which then
+      cascades on the next pass -- the original non-idempotent bug) or under-join (splitting genuine
+      short continuations like <code>के साथ</code>, <code>प्रथम तल</code>). A scan of all 30 docs
+      showed 56/86 short next-lines are headers vs 31 real continuations, so the guard matches a
+      header vocabulary/pattern and checks <em>both</em> prev and next. Verified fixed point: 0/30
+      docs change on a second join, and <code>segment(join(preprocessed)) == segmented</code> for
+      30/30 docs -- the committed data is reproducible from <code>make preprocess</code>.</p>
     <p><strong>Example (doc 6, real OCR):</strong></p>
     <pre class="codeblock">before  (4 OCR lines; only the last carries the danda):
  1  . रिट याचिका सं. 448 वर्ष 4996 (एस/बी) में इलाहाबाद उच्च
@@ -111,7 +159,7 @@ after   (1 joined line):
         <tbody>
           <tr><td>Preprocessed HI non-empty lines</td><td class="num">5,117</td><td class="num">1,749</td></tr>
           <tr><td>Segmented HI sentences</td><td class="num">7,418</td><td class="num">3,221</td></tr>
-          <tr><td>Segmented HI danda-less</td><td class="num">60.7%</td><td class="num">40.3%</td></tr>
+          <tr><td>Segmented HI danda-less</td><td class="num">60.7%</td><td class="num">34.7%</td></tr>
           <tr><td>Aligned pairs</td><td class="num">1,458</td><td class="num">1,422</td></tr>
           <tr><td>Aligned HI without danda</td><td class="num">55.3%</td><td class="num">10.9%</td></tr>
           <tr><td>Avg LaBSE similarity</td><td class="num">0.70</td><td class="num">0.78</td></tr>
@@ -131,40 +179,95 @@ after   (1 joined line):
 
     <h3>4. Segmentation -- <code>segment_sentences.py</code></h3>
     <p><strong>Why:</strong> Alignment needs sentence units while preserving legal abbreviations.</p>
-    <p><strong>How:</strong> spaCy <code>en_core_web_sm</code> for English; danda-aware split for Hindi.</p>
+    <p><strong>How:</strong> English uses spaCy <code>en_core_web_sm</code> (a dependency parser that
+      already handles <code>Mr.</code>, <code>No.</code>, <code>v.</code>, <code>U.P.</code>,
+      <code>Cr.P.C.</code>), with <code>Smt.</code>/<code>Shri.</code>/<code>Sri.</code> protected
+      via a period sentinel. Hindi splits on the danda <code>।</code> -- fast and correct for &gt;95%
+      of boundaries; language is auto-detected per paragraph by danda presence.</p>
+    <p><strong>Why over-segment on purpose:</strong> danda-splitting produces short fragments
+      (section headers, <code>बनाम</code>, numbered items). Rather than hand-merging, the design
+      lets LaBSE alignment drop orphans and keep only strong 1-1 matches -- under-segmenting would
+      merge two sentences into one unit and lose pairs irrecoverably.</p>
     <p><strong>Result (order of magnitude):</strong> EN ~2,495 sentences, HI ~3,221 after joining
-      (was ~7,418 as fragmented OCR lines).</p>
+      (was ~7,418 as fragmented OCR lines; danda-less fraction 60.7% -&gt; 34.7%). Remaining
+      danda-less HI lines are headers, citations, and colon intros -- legitimate standalone units.</p>
 
     <h3>5. Alignment -- <code>align_sentences.py</code></h3>
     <p><strong>Why:</strong> 29/30 docs have EN/HI sentence count mismatch; only document-level
-      parallelism is guaranteed.</p>
-    <p><strong>How:</strong> LaBSE sentence embeddings, mutual-best pairing, then QC:</p>
+      parallelism is guaranteed (EN ~2,495 sentences vs HI ~3,221 after joining -- a ~3:1 pre-join
+      ratio that makes 1:1 line alignment impossible without embeddings).</p>
+    <p><strong>How:</strong> LaBSE sentence embeddings, <strong>mutual-best</strong> pairing per
+      document, then QC filters:</p>
     <ul>
       <li>min similarity &gt;= 0.5</li>
       <li>EN:HI character ratio in [0.3, 3.0]</li>
       <li>min length &gt; 3 chars</li>
       <li>EN Jaccard near-dedup 0.85 (drop weaker of near-duplicates)</li>
     </ul>
-    <p><strong>Result:</strong> <strong>1,422</strong> pairs written to <code>data/aligned/all.jsonl</code>
-      (1,458 before the Hindi join step; joined HI units are longer/complete, so mutual-best pairs
-      shift slightly). Avg LaBSE similarity 0.78.</p>
+    <p><strong>Why mutual-best and not DP:</strong> the EN-HI similarity matrix is extremely sparse
+      -- only ~0.1% of pairs score above 0.5 (Hindi over-segmentation + body-vs-full-doc content
+      mismatch). DP forces an alignment for every EN sentence, manufacturing low-similarity pairs
+      that all get filtered; mutual-best keeps only the strong 1-1 correspondences and lets the rest
+      become orphans. Each HI sentence gets at most one EN partner by construction.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Embedding model</th><th>Pairs produced</th><th>Avg sim</th><th>Pairs in 0.5-0.6 band</th><th>License</th></tr></thead>
+        <tbody>
+          <tr><td><strong>LaBSE (used)</strong></td><td class="num">1,458</td><td class="num">0.70</td><td class="num">401 (27.5%)</td><td>Apache 2.0</td></tr>
+          <tr><td>BGE-M3 (2024, benchmarked)</td><td class="num">1,347</td><td class="num">0.74</td><td class="num">38 (2.8%)</td><td>MIT</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p><strong>Why LaBSE over BGE-M3:</strong> BGE-M3 is more conservative and yields 111 fewer
+      pairs (7.6% less) with cleaner low-band scores. On a 30-document corpus, losing that much
+      recall is worse than the marginal quality gain -- LaBSE is retained as default
+      (<code>align_sentences.py</code> accepts a one-line model swap).</p>
+    <p><strong>Result:</strong> <strong>1,422</strong> pairs written to
+      <code>data/aligned/all.jsonl</code> (1,458 before the Hindi join step; joined HI units are
+      longer/complete, so mutual-best pairs shift slightly). Avg LaBSE similarity 0.78.</p>
+    <div class="callout warn">
+      <div class="label">Alignment quality is imperfect -- thresholds are soft</div>
+      <p>
+        The 0.5 similarity floor is deliberately loose to keep recall on a tiny corpus. On the
+        current data the similarity distribution is: 0.5-0.6: 99 pairs (7%), 0.6-0.7: 183 (13%),
+        0.7-0.8: 412 (29%), 0.8-0.9: 656 (46%), 0.9+: 72 (5%). The 99 low-band pairs include
+        genuine OCR-garbled dates and a few partial overlaps; a stricter floor (0.6) is a one-line
+        change but was kept low after checking that it would drop ~100 borderline pairs. Known
+        residual issues: OCR date corruption (<code>12.06.1978</code> -&gt; <code>42.06.4978</code>),
+        list-marker noise, and a handful of number-only / dangling-preposition fragments that pass
+        the filters (3 number-only pairs, ~60 EN pairs ending in a bare preposition). These are
+        documented, not silent.
+      </p>
+    </div>
 
     <h3>6. Split -- <code>output_format.py</code></h3>
-    <p><strong>Why:</strong> Sentence-level random splits leak the same judgment into train and test.</p>
-    <p><strong>How:</strong> Document-level assignment, seed 42, roughly 80/10/10 by docs then by pairs:</p>
+    <p><strong>Why:</strong> Sentence-level random splits leak the same judgment into train and test
+      (the model would memorize judgment-specific phrasing, inflating dev/test scores). Splitting at
+      the document level guarantees every doc is seen in only one split.</p>
+    <p><strong>How:</strong> 30 document IDs shuffled with a fixed seed (42), then sliced 24/3/3.
+      The resulting IDs are <strong>frozen as constants in <code>src/config.py</code></strong>
+      (<code>TRAIN_DOC_IDS</code> / <code>DEV_DOC_IDS</code> / <code>TEST_DOC_IDS</code>), and
+      <code>output_format.run()</code> prefers these frozen IDs over re-shuffling -- so re-running
+      the pipeline after a data fix never silently re-rolls the split:</p>
     <pre class="codeblock">train docs: 2,3,5,6,7,10-20,22,23,25-30  -&gt; 1,110 pairs
 dev docs:   8, 9, 24                     -&gt; 128 pairs
 test docs:  1, 4, 21                     -&gt; 184 pairs</pre>
     <p>IDs live in <code>src/config.py</code> as frozen constants. Do not re-roll.</p>
+    <p><strong>Partial re-align is merge-safe:</strong> <code>align_sentences.run(merge=)</code>
+      refreshes only the requested docs and merges them into the existing <code>all.jsonl</code>
+      (sorted by doc, then similarity), so a one-doc re-OCR does not wipe the other 29 docs' pairs.
+      This is what made the doc-6 re-OCR fix low-risk: only doc 6's pairs were rebuilt, total
+      stayed at 1,422.</p>
 
-    <h2>Steps deliberately skipped</h2>
+    <h2>Steps deliberately skipped (evidence-based)</h2>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Step</th><th>Why skipped</th></tr></thead>
         <tbody>
-          <tr><td>BOM strip / CRLF normalize</td><td>No residual effect on the live OCR path</td></tr>
-          <tr><td>OCR roman <code>li.</code> fix</td><td>Regex false positives on S.L.P. and judge initials</td></tr>
-          <tr><td>Separate paragraph pass</td><td>Segmentation already enough for align</td></tr>
+          <tr><td>BOM strip</td><td>Only 25/30 legacy <code>clean/</code> files carry a BOM; the pipeline's <code>preprocessed/</code> dir is 0 BOM (30/30).</td></tr>
+          <tr><td>CRLF normalize</td><td><code>preprocessed/</code> is already 100% LF; Python text mode strips CRLF on read anyway.</td></tr>
+          <tr><td>OCR roman <code>li.</code> fix</td><td>Zero <code>li.</code>-style artifacts exist; a naive regex would corrupt <code>S.L.P.</code> and judge initials <code>L.</code>.</td></tr>
+          <tr><td>Separate paragraph pass</td><td>Blank lines already delimit paragraphs in both OCR and clean text; segmentation is the real unit boundary.</td></tr>
         </tbody>
       </table>
     </div>
