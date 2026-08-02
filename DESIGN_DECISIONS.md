@@ -1253,3 +1253,33 @@ Reasons:
 **Pair-count change flagged:** the total is **1,422, not 1,458** -- joined HI units are longer and complete, so LaBSE mutual-best matching pairs slightly differently per doc. Do not silently claim the old 1,458.
 
 **Revision (2026-08-02):** the first version of this step was non-idempotent: `should_join` only guarded the *previous* line, so a long wrap absorbed a following header (`निर्णय`), and re-running the join on that output absorbed the next sentence too (15/30 docs changed on pass 2). The committed data was also not reproducible from the committed code (22/30 docs differed). Fix: header detection now checks both lines and uses a vocabulary/pattern set rather than length alone; regenerated the full chain from raw OCR. Verified fixed-point (0/30 docs change on re-join) and segment(join(preprocessed)) == segmented (30/30).
+
+---
+
+## 38. Alignment quality gates: similarity floor 0.6 + margin + junk filters
+
+**Date:** 2026-08-02
+
+**Context:** §37 (Hindi line-join) fixed the 55% danda-less-fragment problem but the alignment threshold stayed at `MIN_SIMILARITY = 0.5`, a deliberately loose floor set for recall on a tiny corpus. It admitted a tail of weak pairs: on the post-join data, 99 pairs (7%) sat in the 0.5-0.6 band (OCR-garbled dates, partial overlaps, header fragments), plus number-only and truncated-fragment pairs.
+
+**Changes (`src/preprocessing/align_sentences.py`):**
+1. `MIN_SIMILARITY` 0.5 -> **0.6**.
+2. `SIM_MARGIN = 0.01`: mutual-best winner must beat the runner-up by >= 0.01 on BOTH sides. Kills exact/near-exact ties (duplicate boilerplate like `There will be no order as to costs.`), set low enough that genuine legal sentences with near-equal alternatives survive. Measured: 0.02 dropped 15 complete sentences; 0.01 drops only 4.
+3. Junk-pair filters in `quality_filter`:
+   - number-only pairs (both sides pure digits): no translation signal.
+   - EN fragments ending in a bare preposition/conjunction (`of`, `and`, `the`, ...), length-gated to <= 60 chars. Data check: all true truncations were < 60 chars; legal English legitimately ends long sentences (100+) in `of`/`and`/`the`, so the gate protects those.
+4. Dead code removed: `SKIP_PENALTY` (DP cost, unused), `pair_type` (always "1-1"), `matched_hi` (unused set).
+
+**Effect (full re-align):**
+
+| Metric | Before (§37) | After |
+|--------|-------------:|------:|
+| Aligned pairs | 1,422 | **1,300** |
+| Avg LaBSE similarity | 0.779 | **0.796** |
+| Pairs < 0.6 | 99 | **0** |
+| HI without danda | 155 (10.9%) | **109 (8.4%)** |
+| Train / dev / test | 1,110 / 128 / 184 | **1,010 / 122 / 168** |
+
+**Why the margin is the right tool:** the 122 removed pairs are almost all weak (99 sub-0.6, 3 number-only, 11 short-dangling fragments, plus exact-tie duplicates). Only 4 complete sentences (sim 0.63-0.83) are lost -- genuine near-tie ambiguities where two HI sentences are near-equivalent matches and the alignment choice is arbitrary. That is a defensible trade for a corpus whose every remaining pair is >= 0.6.
+
+**Verification:** `make verify-ocr` exits 0; join fixed-point 0/30; full suite 185 tests green; `make lint` clean. New tests: margin keep/drop, number-only, short-dangling reject, long-sentence-with-preposition keep.

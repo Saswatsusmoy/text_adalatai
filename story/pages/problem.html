@@ -31,8 +31,8 @@
         <thead><tr><th>Item</th><th>Value</th></tr></thead>
         <tbody>
           <tr><td>Parallel judgments</td><td>30 Supreme Court of India judgments (source file <code>HC Judgments _ ML Assignment Text.xlsx</code> is a misnomer &mdash; every PDF opens with <code>IN THE SUPREME COURT OF INDIA</code> or the equivalent S.C.R. / INSC citation; the cases are SC appeals reviewing High Court orders)</td></tr>
-          <tr><td>After LaBSE + filters</td><td>1,422 sentence pairs <span class="muted">(1,458 before the Hindi line-join step -- joined OCR wraps produce longer, complete units, so mutual-best pairing shifts; see <a href="pipeline.html">Pipeline</a>)</span></td></tr>
-          <tr><td>Train / dev / test</td><td>1,110 / 128 / 184</td></tr>
+          <tr><td>After LaBSE + filters</td><td>1,300 sentence pairs <span class="muted">(1,458 before the Hindi line-join step; 1,422 after join, then the 0.6 alignment floor + junk filters removed the weak tail -- see <a href="pipeline.html">Pipeline</a>)</span></td></tr>
+          <tr><td>Train / dev / test</td><td>1,010 / 122 / 168</td></tr>
           <tr><td>Split</td><td>Document-level, seed 42</td></tr>
           <tr><td>Test docs</td><td>1, 4, 21</td></tr>
           <tr><td>Dev docs</td><td>8, 9, 24</td></tr>

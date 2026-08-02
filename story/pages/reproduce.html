@@ -24,7 +24,7 @@ make test</pre>
     <pre class="codeblock">make verify-ocr            # gate: preprocessed must be Tesseract OCR (exit 1 on issues)
 make preprocess
 # OCR -> EN join -> HI line-join -> segment -> align -> train/dev/test
-# Expect ~1422 pairs, 1110/128/184 split (pair count moved 1458->1422 after the Hindi join)</pre>
+# Expect ~1300 pairs (0.6 LaBSE floor), 1010/122/168 split (1458->1422->1300)</pre>
 
     <h2>Phase 1b -- Stage A + dual policy</h2>
     <pre class="codeblock">make external-download    # if raw files missing

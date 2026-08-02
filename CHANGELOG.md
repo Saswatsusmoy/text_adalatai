@@ -4,6 +4,18 @@
 
 ### Fixed
 
+- **Alignment quality gates: 0.6 floor + margin + junk filters** (DESIGN §38):
+  - `MIN_SIMILARITY` 0.5 -> 0.6; `SIM_MARGIN = 0.01` (mutual-best winner beats
+    runner-up on both sides, kills exact-tie duplicates, tuned so genuine
+    near-tie sentences survive -- 0.02 lost 15 complete sentences, 0.01 loses 4).
+  - Junk filters: number-only pairs; EN fragments ending in a bare preposition,
+    length-gated to <= 60 chars (protects legitimate long legal sentences).
+  - Dead code removed: `SKIP_PENALTY`, `pair_type`, `matched_hi`.
+  - Regenerated: 1,422 -> **1,300** pairs, avg sim 0.779 -> **0.796**,
+    pairs < 0.6: 99 -> **0**, HI-without-danda 10.9% -> **8.4%**;
+    splits 1,110/128/184 -> **1,010/122/168**.
+  - Tests: margin keep/drop, number-only, dangling-fragment, long-sentence-keep.
+
 - **Story data-pipeline page made comprehensive** (DESIGN §37):
   - Added inputs table (PDFs / EN clean / legacy clean), EN/HI body-vs-full-doc asymmetry rationale.
   - Deepened every step: doc-6 text-layer regression story + backup, OCR invariant gate,

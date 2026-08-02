@@ -160,21 +160,21 @@ after   (1 joined line):
           <tr><td>Preprocessed HI non-empty lines</td><td class="num">5,117</td><td class="num">1,749</td></tr>
           <tr><td>Segmented HI sentences</td><td class="num">7,418</td><td class="num">3,221</td></tr>
           <tr><td>Segmented HI danda-less</td><td class="num">60.7%</td><td class="num">34.7%</td></tr>
-          <tr><td>Aligned pairs</td><td class="num">1,458</td><td class="num">1,422</td></tr>
-          <tr><td>Aligned HI without danda</td><td class="num">55.3%</td><td class="num">10.9%</td></tr>
-          <tr><td>Avg LaBSE similarity</td><td class="num">0.70</td><td class="num">0.78</td></tr>
+          <tr><td>Aligned pairs</td><td class="num">1,458</td><td class="num">1,300</td></tr>
+          <tr><td>Aligned HI without danda</td><td class="num">55.3%</td><td class="num">8.4%</td></tr>
+          <tr><td>Avg LaBSE similarity</td><td class="num">0.70</td><td class="num">0.80</td></tr>
         </tbody>
       </table>
     </div>
     <div class="callout warn">
       <div class="label">Pair count changed -- not a regression</div>
-      <p>Total pairs moved <strong>1,458 -&gt; 1,422</strong>. Joined HI units are longer and
-        complete, so LaBSE mutual-best matching pairs slightly differently per doc. The remaining
-        10.9% danda-less aligned texts are mostly standalone headers that happen to align,
-        colon-terminated definition intros (<code>... इस प्रकार है:-</code>), and OCR-garbled
-        citations. Known conservative limits: blank-line-separated wraps (e.g. doc 1 charge list)
-        stay split, and headers longer than 40 chars merge into the adjacent line (harmless, as
-        they are alignment orphans).</p>
+      <p>Total pairs moved <strong>1,458 -&gt; 1,422 -&gt; 1,300</strong>: the Hindi join made HI
+        units longer and complete (mutual-best pairing shifts), then the 0.6 alignment floor and
+        junk filters dropped the weak tail. The remaining 8.4% danda-less aligned texts are mostly
+        standalone headers that happen to align, colon-terminated definition intros
+        (<code>... इस प्रकार है:-</code>), and OCR-garbled citations. Known conservative limits:
+        blank-line-separated wraps (e.g. doc 1 charge list) stay split, and headers longer than 40
+        chars merge into the adjacent line (harmless, as they are alignment orphans).</p>
     </div>
 
     <h3>4. Segmentation -- <code>segment_sentences.py</code></h3>
@@ -199,9 +199,12 @@ after   (1 joined line):
     <p><strong>How:</strong> LaBSE sentence embeddings, <strong>mutual-best</strong> pairing per
       document, then QC filters:</p>
     <ul>
-      <li>min similarity &gt;= 0.5</li>
+      <li>min similarity &gt;= <strong>0.6</strong> (raised from 0.5)</li>
+      <li>mutual-best winner beats runner-up by &gt;= 0.01 on both sides (kills tie duplicates)</li>
       <li>EN:HI character ratio in [0.3, 3.0]</li>
       <li>min length &gt; 3 chars</li>
+      <li>not number-only (both sides pure digits)</li>
+      <li>not a short EN fragment ending in a bare preposition (&lt;= 60 chars)</li>
       <li>EN Jaccard near-dedup 0.85 (drop weaker of near-duplicates)</li>
     </ul>
     <p><strong>Why mutual-best and not DP:</strong> the EN-HI similarity matrix is extremely sparse
@@ -222,21 +225,20 @@ after   (1 joined line):
       pairs (7.6% less) with cleaner low-band scores. On a 30-document corpus, losing that much
       recall is worse than the marginal quality gain -- LaBSE is retained as default
       (<code>align_sentences.py</code> accepts a one-line model swap).</p>
-    <p><strong>Result:</strong> <strong>1,422</strong> pairs written to
-      <code>data/aligned/all.jsonl</code> (1,458 before the Hindi join step; joined HI units are
-      longer/complete, so mutual-best pairs shift slightly). Avg LaBSE similarity 0.78.</p>
+    <p><strong>Result:</strong> <strong>1,300</strong> pairs written to
+      <code>data/aligned/all.jsonl</code> (1,458 pre-join -&gt; 1,422 joined -&gt; 1,300 after the
+      0.6 floor + junk filters). Avg LaBSE similarity 0.80; <strong>0</strong> pairs below 0.6.</p>
     <div class="callout warn">
-      <div class="label">Alignment quality is imperfect -- thresholds are soft</div>
+      <div class="label">Alignment quality gates were tightened -- with data</div>
       <p>
-        The 0.5 similarity floor is deliberately loose to keep recall on a tiny corpus. On the
-        current data the similarity distribution is: 0.5-0.6: 99 pairs (7%), 0.6-0.7: 183 (13%),
-        0.7-0.8: 412 (29%), 0.8-0.9: 656 (46%), 0.9+: 72 (5%). The 99 low-band pairs include
-        genuine OCR-garbled dates and a few partial overlaps; a stricter floor (0.6) is a one-line
-        change but was kept low after checking that it would drop ~100 borderline pairs. Known
-        residual issues: OCR date corruption (<code>12.06.1978</code> -&gt; <code>42.06.4978</code>),
-        list-marker noise, and a handful of number-only / dangling-preposition fragments that pass
-        the filters (3 number-only pairs, ~60 EN pairs ending in a bare preposition). These are
-        documented, not silent.
+        The old 0.5 floor admitted a 99-pair (7%) junk tail of OCR-garbled dates, partial overlaps,
+        and header fragments. Raising the floor to 0.6 plus a 0.01 mutual-best margin plus
+        number-only/dangling-fragment filters removed 122 pairs: 99 sub-0.6, 3 number-only,
+        11 short-dangling fragments, and exact-tie duplicates. Only 4 complete sentences are lost
+        (sim 0.63-0.83) -- genuine near-ties where two HI sentences are near-equivalent matches.
+        The margin was tuned down from 0.02 to 0.01 because 0.02 dropped 15 complete sentences.
+        Residual known noise (not silent): OCR date corruption (<code>12.06.1978</code> -&gt;
+        <code>42.06.4978</code>) and list-marker noise remain in some kept pairs.
       </p>
     </div>
 
@@ -249,15 +251,15 @@ after   (1 joined line):
       (<code>TRAIN_DOC_IDS</code> / <code>DEV_DOC_IDS</code> / <code>TEST_DOC_IDS</code>), and
       <code>output_format.run()</code> prefers these frozen IDs over re-shuffling -- so re-running
       the pipeline after a data fix never silently re-rolls the split:</p>
-    <pre class="codeblock">train docs: 2,3,5,6,7,10-20,22,23,25-30  -&gt; 1,110 pairs
-dev docs:   8, 9, 24                     -&gt; 128 pairs
-test docs:  1, 4, 21                     -&gt; 184 pairs</pre>
+    <pre class="codeblock">train docs: 2,3,5,6,7,10-20,22,23,25-30  -&gt; 1,010 pairs
+dev docs:   8, 9, 24                     -&gt; 122 pairs
+test docs:  1, 4, 21                     -&gt; 168 pairs</pre>
     <p>IDs live in <code>src/config.py</code> as frozen constants. Do not re-roll.</p>
     <p><strong>Partial re-align is merge-safe:</strong> <code>align_sentences.run(merge=)</code>
       refreshes only the requested docs and merges them into the existing <code>all.jsonl</code>
       (sorted by doc, then similarity), so a one-doc re-OCR does not wipe the other 29 docs' pairs.
-      This is what made the doc-6 re-OCR fix low-risk: only doc 6's pairs were rebuilt, total
-      stayed at 1,422.</p>
+      This is what made the doc-6 re-OCR fix and the threshold changes low-risk: only the affected
+      docs' pairs are rebuilt.</p>
 
     <h2>Steps deliberately skipped (evidence-based)</h2>
     <div class="table-wrap">

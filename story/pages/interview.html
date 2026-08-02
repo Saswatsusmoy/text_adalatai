@@ -16,7 +16,7 @@
     <h2>30-second pitch</h2>
     <ol>
       <li>Goal: high-fidelity legal EN-&gt;HI plus Indic token efficiency.</li>
-      <li>Data: 30 judgments -&gt; OCR, Hindi line-join, LaBSE, 1,422 pairs, document-level freeze; Stage A ~993k legal.</li>
+      <li>Data: 30 judgments -&gt; OCR, Hindi line-join, LaBSE 0.6 floor, 1,300 pairs, document-level freeze; Stage A ~993k legal.</li>
       <li>Tokens: byte-level BPE is expensive for Hindi; domain joint Unigram packs better.</li>
       <li>MT: NLLB-600M + LoRA A2 on legal Stage A. Not Stage B (forgets external legal).</li>
       <li>Custom vocab extend was honest science -- careful method still lost to stock NLLB.</li>

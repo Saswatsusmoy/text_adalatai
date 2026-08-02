@@ -10,6 +10,7 @@ Output: data/aligned/all.jsonl (pairs with doc_id and scores)
 """
 
 import json
+import re
 from pathlib import Path
 
 import torch
@@ -23,13 +24,25 @@ HI_SEGMENTED_DIR = Path('data/hindi/segmented')
 OUTPUT_DIR = Path('data/aligned')
 
 # Quality filter thresholds
-MIN_SIMILARITY = 0.5
+MIN_SIMILARITY = 0.6
+# Mutual-best winner must beat the runner-up by this margin on both sides;
+# kills near-ties where two HI sentences are almost equally good matches.
+# Set low (0.01) so genuine legal sentences with near-equal alternatives
+# survive; only exact/near-exact ties (duplicate boilerplate) are dropped.
+SIM_MARGIN = 0.01
 MIN_CHAR_RATIO = 0.3
 MAX_CHAR_RATIO = 3.0
-SKIP_PENALTY = 0.5  # cost to skip a sentence (vs aligning)
 
 # Near-dedup on EN side
 DEDUP_JACCARD_THRESHOLD = 0.85
+
+# EN fragments ending in a bare preposition/conjunction: truncated sentences
+# (e.g. "A reply was submitted by the"). Legal English legitimately ends long
+# sentences in `of`/`and`/`the` too, so the filter only fires on SHORT fragments
+# (data check: all true truncations were < 60 chars, all legitimate endings were
+# 100+), keeping real sentences intact.
+_DANGLING_EN_RE = re.compile(r'\b(?:of|and|the|in|by|to|for|a|an|on|with|that)$')
+MAX_DANGLING_EN_LEN = 60
 
 _model = None
 
@@ -66,15 +79,27 @@ def align_sentences(
     """Greedy bidirectional alignment with quality filtering."""
     sim = util.cos_sim(en_emb, hi_emb)
 
+    # Top-2 similarity per EN and per HI so the winner-vs-runner margin can be
+    # enforced (kills near-ties). Rows with a single candidate get -1 as runner-up.
+    en_k = min(2, sim.shape[1])
+    en_top2 = sim.topk(en_k, dim=1).values  # [n_en, k]
+    hi_k = min(2, sim.shape[0])
+    hi_top2 = sim.topk(hi_k, dim=0).values.t()  # [n_hi, k] (transpose topk-by-column)
+
+    def _margin(top2: torch.Tensor, idx: int) -> float:
+        row = top2[idx]
+        if row.numel() < 2:
+            return 1.0  # single candidate: no runner-up to beat
+        return float(row[0] - row[1])
+
     # Find best HI match for each EN (best_en_to_hi)
-    best_en_to_hi = sim.max(dim=1).values
     best_en_to_hi_idx = sim.argmax(dim=1)
+    best_en_to_hi = sim.max(dim=1).values
 
     # Find best EN match for each HI (best_hi_to_en)
     best_hi_to_en_idx = sim.argmax(dim=0)
 
     pairs = []
-    matched_hi = set()
 
     for en_idx in range(len(en_sents)):
         hi_idx = best_en_to_hi_idx[en_idx].item()
@@ -82,18 +107,23 @@ def align_sentences(
 
         # Check if this is a mutual best (bidirectional)
         is_mutual = best_hi_to_en_idx[hi_idx].item() == en_idx
+        if not is_mutual:
+            continue
+
+        # Winner must beat runner-up on both sides (margin kills near-ties)
+        if min(_margin(en_top2, en_idx), _margin(hi_top2, hi_idx)) < SIM_MARGIN:
+            continue
 
         # Only keep if similarity meets threshold
-        if similarity >= MIN_SIMILARITY and is_mutual:
+        if similarity >= MIN_SIMILARITY:
             pairs.append(
                 {
                     'en_idx': en_idx,
                     'hi_idx': hi_idx,
                     'similarity': similarity,
-                    'pair_type': '1-1' if is_mutual else '1-1',
+                    'pair_type': '1-1',
                 }
             )
-            matched_hi.add(hi_idx)
 
     return pairs
 
@@ -117,8 +147,11 @@ def build_aligned_text(pair: dict, en_sents: list[str], hi_sents: list[str]) -> 
         'en_idx': pair['en_idx'],
         'hi_idx': pair['hi_idx'],
         'similarity': pair['similarity'],
-        'pair_type': pair['pair_type'],
     }
+
+
+def _is_number_only(text: str) -> bool:
+    return text.strip().rstrip('.,;:').isdigit()
 
 
 def quality_filter(pair: dict) -> bool:
@@ -129,6 +162,16 @@ def quality_filter(pair: dict) -> bool:
     if not en_text.strip() or not hi_text.strip():
         return False
     if len(en_text.strip()) < 3 or len(hi_text.strip()) < 3:
+        return False
+
+    # Remove number-only pairs (e.g. "22." <-> "22."): no translation signal
+    if _is_number_only(en_text) and _is_number_only(hi_text):
+        return False
+
+    # Remove EN fragments that end in a bare preposition/conjunction: they are
+    # truncated OCR sentences, not complete units. Length-gated so complete
+    # legal sentences that happen to end in `of`/`and` survive.
+    if len(en_text.strip()) <= MAX_DANGLING_EN_LEN and _DANGLING_EN_RE.search(en_text.strip()):
         return False
 
     # Length ratio filter

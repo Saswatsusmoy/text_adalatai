@@ -1,8 +1,12 @@
 import json
 from pathlib import Path
 
+import torch
+
 from src.preprocessing.align_sentences import (
     MIN_SIMILARITY,
+    SIM_MARGIN,
+    align_sentences,
     dedup,
     load_sentences,
     process_doc,
@@ -45,6 +49,47 @@ class TestQualityFilter:
         assert not quality_filter({'en_text': too_long, 'hi_text': short, 'similarity': 0.9})
         assert not quality_filter({'en_text': short, 'hi_text': too_long, 'similarity': 0.9})
 
+    def test_number_only_rejected(self):
+        assert not quality_filter({'en_text': '22.', 'hi_text': '22.', 'similarity': 0.9})
+        assert not quality_filter({'en_text': '3', 'hi_text': '३', 'similarity': 0.9})
+
+    def test_number_only_kept_when_mixed(self):
+        # Number-only check requires BOTH sides to be digits
+        assert quality_filter(
+            {
+                'en_text': 'The appellant cited section 22 of the Act.',
+                'hi_text': 'अपीलकर्ता ने अधिनियम की धारा 22 का हवाला दिया।',
+                'similarity': 0.9,
+            }
+        )
+
+    def test_dangling_preposition_rejected(self):
+        assert not quality_filter(
+            {
+                'en_text': 'A reply was submitted by the',
+                'hi_text': 'जवाब प्रस्तुत किया।',
+                'similarity': 0.8,
+            }
+        )
+
+    def test_short_dangling_fragment_rejected(self):
+        assert not quality_filter(
+            {'en_text': 'The statement made by', 'hi_text': 'उद्घोषणा', 'similarity': 0.51}
+        )
+
+    def test_long_sentence_ending_in_preposition_kept(self):
+        # Legal English legitimately ends long sentences in `of`/`and`/`the`;
+        # the dangling filter is length-gated to short fragments only.
+        long_en = 'The Committee further recommended that the penalty of dismissal be reviewed and the order of'
+        assert len(long_en) > 60
+        assert quality_filter(
+            {
+                'en_text': long_en,
+                'hi_text': 'समिति ने आगे सिफारिश की कि बर्खास्तगी के दंड की समीक्षा की जाए और आदेश',
+                'similarity': 0.73,
+            }
+        )
+
 
 class TestDedup:
     def test_identical_keeps_best(self):
@@ -64,6 +109,27 @@ class TestDedup:
     def test_empty_input(self):
         en_r, hi_r, sims_r = dedup([], [], [])
         assert en_r == []
+
+
+class TestMargin:
+    def test_margin_keeps_clear_winner(self):
+        # en0 uniquely matches hi0 (huge margin); en1 uniquely matches hi1.
+        en_emb = torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+        hi_emb = torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+        pairs = align_sentences(en_emb, hi_emb, ['a', 'b'], ['x', 'y'])
+        assert len(pairs) == 2
+        assert all(p['similarity'] >= MIN_SIMILARITY for p in pairs)
+
+    def test_margin_drops_exact_tie(self):
+        # en0 is equally similar to hi0 and hi1 (margin 0) -> dropped as near-tie.
+        en_emb = torch.tensor([[1.0, 0.0, 0.0]])
+        hi_emb = torch.tensor([[1.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+        pairs = align_sentences(en_emb, hi_emb, ['a'], ['x', 'y'])
+        assert pairs == []
+
+    def test_sim_margin_positive(self):
+        assert SIM_MARGIN > 0
+        assert SIM_MARGIN <= 0.02
 
 
 class TestProcessDoc:
