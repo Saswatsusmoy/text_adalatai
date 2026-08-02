@@ -62,7 +62,7 @@ class TokenizerConfig:
     seed_sentencepiece_size: int = 250_000
     input_sentence_size: int = 0  # 0 = use all lines
     num_threads: int = 8
-    seed: int = 42
+    seed: int = 42  # informational only: SPM TrainerSpec has no seed field
 
     def opts_tag(self) -> str:
         parts = []

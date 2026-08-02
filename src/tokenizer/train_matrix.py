@@ -75,7 +75,6 @@ spm.SentencePieceTrainer.train(
     seed_sentencepiece_size={cfg.seed_sentencepiece_size},
     max_sentence_length={cfg.max_sentence_length},
     num_threads={cfg.num_threads},
-    seed={cfg.seed},
     shuffle_input_sentence=True,
 )
 """

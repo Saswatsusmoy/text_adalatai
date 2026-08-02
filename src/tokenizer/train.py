@@ -54,7 +54,6 @@ def train(
     profile: str = 'sample',
     model_type: str = 'unigram',
     split_by_unicode_script: bool = False,
-    seed: int | None = 42,
 ) -> Path:
     if model_prefix is None:
         model_prefix = f'sentencepiece_{vocab_size}'
@@ -66,11 +65,10 @@ def train(
     model_path = MODEL_DIR / model_prefix
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
     opts = dict(TRAIN_PROFILES[profile])
-    if seed is not None:
-        opts['seed'] = seed
     # Matrix family (and this project's preference) keeps mixed-script pieces
     # intact; SPM's default is True, so it must be set explicitly to stay
-    # consistent with the 35-config matrix (DESIGN 33).
+    # consistent with the 35-config matrix (DESIGN 33). Note: SPM's TrainerSpec
+    # has NO seed field -- trainer randomness is not user-controllable.
     opts['split_by_unicode_script'] = split_by_unicode_script
 
     spm.SentencePieceTrainer.train(
@@ -130,12 +128,6 @@ if __name__ == '__main__':
         action='store_true',
         help='Force EN/HI script boundary splits (default: False, keeps mixed-script pieces)',
     )
-    parser.add_argument(
-        '--seed',
-        type=int,
-        default=42,
-        help='Trainer seed (default 42)',
-    )
     args = parser.parse_args()
     train(
         args.input,
@@ -144,5 +136,4 @@ if __name__ == '__main__':
         profile=args.profile,
         model_type=args.model_type,
         split_by_unicode_script=args.split_by_unicode_script,
-        seed=args.seed,
     )
