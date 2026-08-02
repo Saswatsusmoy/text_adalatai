@@ -48,6 +48,16 @@
       prioritizes quality with stock NLLB tokens after vocab-extend lost dual-policy scores.
     </p>
 
+    <h3>How do you know the tokenizer matrix actually applies to your freeze?</h3>
+    <p>
+      We proto-verify every model. That check caught the freeze quietly inheriting SPM's default
+      <code>split_by_unicode_script=True</code> while the matrix used <code>False</code> -- so the
+      freeze was retrained to match, and the "+7%" packing claim was corrected to ~1.9% (the rest
+      was the script-split axis). We also found SPM has no <code>seed</code> parameter, so
+      "reproducible seed 42" was never enforceable. Details on the
+      <a href="tokenizers.html">Tokenizers</a> page and DESIGN_DECISIONS &sect;39.
+    </p>
+
     <h3>Why NLLB instead of TinyLLaMA / Mistral?</h3>
     <p>
       Sentence-level legal translation is encoder-decoder MT territory. LoRA on NLLB is

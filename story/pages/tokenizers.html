@@ -115,7 +115,10 @@
     </p>
 
     <h3>Phase 1 result (joint corpus, MT-usable)</h3>
-    <p>Held-out 322 pairs (assignment dev + test, never in SPM train):</p>
+    <p>Held-out pairs (assignment dev + test, never in SPM train). The matrix was measured on the
+      pre-alignment-tightening set (322 pairs); after the 0.6 alignment floor the held-out set is
+      290 pairs (122 dev + 168 test) -- relative orderings are unchanged, absolute c/t numbers shift
+      slightly. See <a href="pipeline.html">Pipeline</a>.</p>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Vocab</th><th>Unigram HI c/t</th><th>BPE HI c/t</th><th>Best total tok</th></tr></thead>
@@ -137,6 +140,10 @@
       <li>Legal-HI single-piece probe rate is <strong>100%</strong> for all 10 joint models (न्यायालय, अनुच्छेद, अपीलकर्ता, ... always one token).</li>
       <li>Legal-EN single-piece probe rate is <strong>100%</strong> on joint (Section, Writ, Petition, Appellant, ... always one token). <strong>0-50%</strong> on v2_hi -- HI-only fragments English, unusable for MT.</li>
       <li><strong>UNK rate = 0.00%</strong> everywhere because <code>character_coverage=1.0</code>.</li>
+      <li><strong>All 35 matrix models use <code>split_by_unicode_script=False</code></strong> (the
+        <code>TokenizerConfig</code> default), keeping mixed-script pieces like
+        <code>Section 331</code> or <code>Article 227</code> intact. The phase-2 ablation showed
+        turning it on (<code>True</code>) costs &minus;0.237 HI c/t.</li>
     </ul>
 
     <h3>Phase 2 axis effects (avg delta over 3 joint bases)</h3>
@@ -194,12 +201,27 @@
       <ul>
         <li>Track D shipped uses NLLB native tokens, so changing v2 SPM affects no shipped output.</li>
         <li>Existing Track C artifacts and configs reference the 41k freeze.</li>
-        <li>+7% packing gain (4.37 &rarr; 4.695) doesn't justify churn for a track that lost dual-policy in §26.</li>
+        <li>The packing gain 41k &rarr; 64k is <strong>~1.9%</strong> once the script-split axis is held constant (4.609 &rarr; 4.695 HI c/t), not the "+7%" that an earlier note implied by conflating vocab size with the <code>split_by_unicode_script</code> change.</li>
       </ul>
       <p>
         <strong>Recommendation for any future Track C rebuild</strong>
         (C1a from-scratch or fresh C1c-style extend):
         <code>bpe_64k_bf</code> or <code>unigram_64k_bf</code>.
+      </p>
+    </div>
+    <div class="callout warn">
+      <div class="label">Config-consistency fix (this freeze is now genuinely matrix-confirmed)</div>
+      <p>
+        An independent check of the model protos found the shipped freeze was trained with SPM's
+        <em>default</em> <code>split_by_unicode_script=True</code>, while every one of the 35 matrix
+        models uses <code>False</code>. <code>train.py</code> never passed the option, so it silently
+        inherited True. That meant the matrix did <strong>not</strong> actually confirm the freeze,
+        and the "+7%" figure double-counted two axes. The freeze was retrained on the H200 box with
+        <code>split_by_unicode_script=False</code> (same dedup corpus, profile <code>full</code>),
+        proto-verified, and now benchmarks <strong>identical to the matrix 41k</strong> (HI c/t 4.715
+        on the post-alignment held-out set) -- the matrix genuinely applies to it now. Along the way
+        we found SentencePiece's <code>TrainerSpec</code> has <em>no</em> <code>seed</code> field, so
+        the matrix's "seed 42" was never enforceable (informational only).
       </p>
     </div>
 
@@ -250,9 +272,16 @@ make tokenizer-matrix-bench    # all 35, writes tokenizer_matrix.json
 
 # individual v2 paths still available:
 make tokenizer-c0                        # v2 corpus + sample train + bench
-make tokenizer-spm-v2-full-joint         # unigram full joint 41k
+make tokenizer-spm-v2-full-joint         # unigram full joint 41k (sus=False default)
 make tokenizer-spm-v2-full-joint-bpe     # bpe full joint 41k
-make tokenizer-train-all                 # v1 Prarabdha ladder</pre>
+make tokenizer-train-all                 # v1 Prarabdha ladder
+
+# verify the freeze config (proto check):
+PYTHONPATH=. python3 -c "import sentencepiece as spm,sys; \
+sys.path.insert(0,'.venv/lib/python3.*/site-packages/sentencepiece'); \
+import sentencepiece_model_pb2 as m; p=m.ModelProto(); \
+p.ParseFromString(spm.SentencePieceProcessor(model_file='data/models/tokenizers/sentencepiece_legal_v2_joint_full_41000.model').serialized_model_proto()); \
+print('sus =', p.trainer_spec.split_by_unicode_script)"</pre>
   </div>
   <script src="../js/site.js"></script>
 </body>

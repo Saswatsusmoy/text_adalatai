@@ -48,6 +48,16 @@
             <td>Joint EN+HI freeze</td>
           </tr>
           <tr>
+            <td>Freeze / matrix config drift</td>
+            <td>Shipped freeze silently inherited SPM's <code>split_by_unicode_script=True</code> while all 35 matrix models used <code>False</code> -- the matrix could not actually confirm the freeze, and the "+7%" packing claim double-counted axes</td>
+            <td>Retrained freeze sus=False (proto-verified, matrix-identical); claim corrected to ~1.9%</td>
+          </tr>
+          <tr>
+            <td>SPM has no <code>seed</code> param</td>
+            <td>Passing <code>seed=42</code> raised <code>NOT_FOUND</code>; "reproducible seed" was unenforceable</td>
+            <td>Removed arg; documented as informational</td>
+          </tr>
+          <tr>
             <td>torch.compile + DDP</td>
             <td>Hang / NCCL abort after first loss_eval</td>
             <td>compile off when world_size &gt; 1</td>

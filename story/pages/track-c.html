@@ -21,6 +21,17 @@
       dev/test. See <a href="tokenizers.html">Tokenizers</a> for packing tables.
     </p>
     <p><strong>Status:</strong> shipped as Track C production tokenizer freeze.</p>
+    <div class="callout warn">
+      <div class="label">Freeze config is matrix-consistent (retrained)</div>
+      <p>
+        The original freeze file was trained with SPM's default
+        <code>split_by_unicode_script=True</code>, diverging from the 35-config matrix (all
+        <code>False</code>). It was retrained with <code>False</code> on the H200 box (same corpus,
+        profile <code>full</code>) and proto-verified; it now benchmarks identical to the matrix 41k.
+        Filename and <code>SPM_V2_PRIMARY</code> unchanged. Details in
+        <a href="tokenizers.html">Tokenizers</a> and DESIGN_DECISIONS &sect;39.
+      </p>
+    </div>
 
     <h2>C1a -- from-scratch Marian (stopped)</h2>
     <p>
