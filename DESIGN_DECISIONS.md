@@ -594,7 +594,7 @@ HI-only wins raw HI compression but **wrecks English** (HI/EN << 1 means EN is o
 | full 64k | **4.42** | **10,819** | **6,125** | 23,742 |
 | v1 41k (ref) | 3.95 | 11,965 | 6,784 | 16,840 |
 
-Gains 41k->64k are real but modest (~1.4% fewer held-out tokens; ~1.4% on test). Glossary legal terms stay 1-piece across 41/48/64 for core HI + Section/impugned.
+Gains 41k->64k are real but modest (~1.4% fewer held-out tokens; ~1.4% on test). Glossary legal terms stay 1-piece across 41/48/64 for core HI + Section/impugned. *(Historical numbers, measured on the pre-§37 corpus with the old sus=True freeze; the freeze was retrained sus=False in §39.)*
 
 **Production freeze (Track C): `sentencepiece_legal_v2_joint_full_41000`.**
 
@@ -603,6 +603,8 @@ Rationale: among full-joint models, 64k wins pure packing, but larger V increase
 **Not in C0:** model embedding resize / LoRA (Track C1); default-backbone zero-shot (Track D).
 
 > **Supersedes note (§33):** the vocab-size ablation above (41k / 48k / 64k, Unigram only) and the individual freeze rationale are subsumed by the full 35-config tokenizer matrix in §33 (Cartesian `{unigram, bpe} x {16k..64k} x {joint, hi}` + 5 secondary-axis ablations on top-3 bases). The §33 matrix confirms the 41k freeze rationale on the joint corpus, adds BPE data (`bpe_41k` HI c/t 4.604 vs Unigram 4.609 at 41k), and identifies `bpe_64k_bf` / `unigram_64k_bf` as the recommendation for any future Track C rebuild. **`SPM_V2_PRIMARY` unchanged.**
+>
+> **Config-consistency revision (§39):** the freeze model file was originally trained with SPM's default `split_by_unicode_script=True`, while every matrix model uses `False` -- so the matrix did not actually confirm the freeze, and the "+7% packing 41k -> 64k" claim conflated vocab size with the script-split axis (true vocab-only gain ~1.9%). The freeze was retrained with `split_by_unicode_script=False` (same dedup corpus, profile `full`, seed/threads aside), verified from the model proto, and now benchmarks identical to the matrix 41k (HI c/t 4.715 on the post-alignment held-out set). See §39.
 
 ---
 
@@ -1127,7 +1129,9 @@ Phase 2 axis effects (average delta across the 3 base configs):
 Reasons:
 1. Track D shipped uses NLLB native tokens, so any v2 SPM change affects no shipped output.
 2. Track C artifacts and configs reference the current 41k freeze.
-3. The +7% packing gain going 41k -> 64k does not justify churn for a track that already lost dual-policy in §26.
+3. The packing gain going 41k -> 64k is only ~1.9% once the `split_by_unicode_script` axis is held constant (4.609 -> 4.695 HI c/t at sus=False; the earlier "4.37 -> 4.695 = +7%" conflated vocab size with the sus True->False change). That does not justify churn for a track that already lost dual-policy in §26.
+
+> **Revision (§39):** the freeze model file was retrained with `split_by_unicode_script=False` so the matrix now genuinely applies to it. The +7% figure above was a conflation; the true vocab-only gain is ~1.9%. `SPM_V2_PRIMARY` filename unchanged.
 
 **Recommendation for future Track C rebuild (any C1a from-scratch or fresh C1c-style extend):** use `sentencepiece_legal_v2_v2_joint_bpe_64000_bf.model` or the unigram equivalent -- HI c/t 4.695, byte_fallback for OOV robustness, 100% legal HI + EN probe hit-rate, 0.00% UNK.
 
@@ -1283,3 +1287,23 @@ Reasons:
 **Why the margin is the right tool:** the 122 removed pairs are almost all weak (99 sub-0.6, 3 number-only, 11 short-dangling fragments, plus exact-tie duplicates). Only 4 complete sentences (sim 0.63-0.83) are lost -- genuine near-tie ambiguities where two HI sentences are near-equivalent matches and the alignment choice is arbitrary. That is a defensible trade for a corpus whose every remaining pair is >= 0.6.
 
 **Verification:** `make verify-ocr` exits 0; join fixed-point 0/30; full suite 185 tests green; `make lint` clean. New tests: margin keep/drop, number-only, short-dangling reject, long-sentence-with-preposition keep.
+
+---
+
+## 39. Tokenizer freeze retrained: split_by_unicode_script False (matrix-consistent)
+
+**Date:** 2026-08-02
+
+**Context:** Independent proto inspection found the shipped freeze `sentencepiece_legal_v2_joint_full_41000.model` was trained with SPM's **default** `split_by_unicode_script=True`, while all 35 matrix models use `False` (`TokenizerConfig` default). `train.py` never passed the option, so it silently inherited True. Consequence: the §33 matrix did NOT actually confirm the freeze, and the "+7% packing 41k -> 64k (4.37 -> 4.695)" claim conflated two axes (vocab size AND the script-split axis). The true vocab-only gain at sus=False is ~1.9% (4.609 -> 4.695).
+
+**Also found:** SentencePiece `TrainerSpec` has **no `seed` field** -- passing `seed=42` raised `RuntimeError: NOT_FOUND`. The `TokenizerConfig.seed` field is informational only; SPM trainer randomness is not user-controllable. The matrix's "reproducible/seed 42" claim was unenforceable by construction.
+
+**Changes:**
+1. `train()` now accepts `split_by_unicode_script` (default `False`, matrix family) and passes it explicitly; CLI flag `--split-by-unicode-script`.
+2. `train_full_joint` threads the flag through; `train_matrix` no longer passes the invalid `seed`.
+3. Retrained the freeze on the 2x H200 box (`profile=full`, same dedup corpus, sus=False): proto verified `split_by_unicode_script=False`, vocab 41000, Unigram.
+4. Re-benchmarked on the post-alignment held-out set: **identical to matrix 41k** (HI c/t 4.715, total 17,521) -- the freeze is now genuinely matrix-confirmed.
+
+**Note on bench numbers:** the held-out set shrank from 322 (pre-§37) to 290 pairs (122 dev + 168 test after alignment tightening in §38), so absolute c/t figures differ from the §33 tables; the freeze-vs-matrix equivalence is what matters and holds exactly.
+
+**Verification:** `make lint` clean; tokenizer tests pass; model proto confirms the setting.

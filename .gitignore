@@ -71,3 +71,4 @@ hf_token
 # Logs
 *.log
 logs/
+.vercel

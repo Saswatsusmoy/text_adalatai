@@ -4,6 +4,20 @@
 
 ### Fixed
 
+- **Tokenizer freeze now matrix-consistent (split_by_unicode_script=False)** (DESIGN §39):
+  - `train()` never passed `split_by_unicode_script`, so the shipped freeze
+    `joint_full_41000` inherited SPM's default True while all 35 matrix models
+    use False -- the matrix did not actually confirm the freeze, and the
+    "+7% 41k->64k" claim conflated vocab size with the script-split axis
+    (true vocab-only gain ~1.9%).
+  - `train()` now takes and passes `split_by_unicode_script` (default False);
+    `train_full_joint` threads it; `--split-by-unicode-script` CLI flag.
+  - Retrained the freeze on 2x H200 (profile=full, same dedup corpus, sus=False);
+    proto verified; re-benchmarks identical to matrix 41k (HI c/t 4.715 on the
+    post-alignment held-out set).
+  - Dropped the invalid `seed` SPM arg (TrainerSpec has no seed field --
+    `TokenizerConfig.seed` is informational only).
+
 - **Alignment quality gates: 0.6 floor + margin + junk filters** (DESIGN §38):
   - `MIN_SIMILARITY` 0.5 -> 0.6; `SIM_MARGIN = 0.01` (mutual-best winner beats
     runner-up on both sides, kills exact-tie duplicates, tuned so genuine
