@@ -1224,7 +1224,7 @@ Reasons:
 1. Never join across a blank line (paragraph boundary).
 2. Never join if the **next** line starts a numbered item / bullet / list marker -- Arabic and Devanagari digits, short roman numerals, `(क)` / `(॥)` markers, `-`/`•`. **Dates (DD.MM.YYYY, incl. Devanagari digits) are exempt**: a date-start line is usually a mid-sentence continuation (54 such cases were falsely blocked before the exemption).
 3. Never join if the **current** line ends with a sentence terminator (danda `।`/`॥`, tolerating trailing punctuation/quotes such as `।"`).
-4. Never join if the current line is short (<= 40 chars) and contains no danda: it is a standalone header (case header, judge name, section label). Short lines that *do* contain a mid-line danda are body text and join.
+4. Never join if either line is a **standalone header** (case header, judge name, section label): short (<= 40 chars), danda-less, and matching a header vocabulary/pattern (`बनाम`, `निर्णय`, `उद्घोषणा`, `अस्वीकरण`, `प्रतिवेद्य`, `हेडनोट`, `कोरम`, `प्रस्तुतियाँ`, `नई दिल्ली`, `न्यायमूर्ति...`, `(न्यायमूर्ति...`, `X:` / `X;`). The **next** line is checked too: a long wrap line must not absorb a following header. Rare short continuations (`के साथ`, `प्रथम तल`) start with a postposition and still join.
 5. Otherwise join (mid-sentence OCR hard wrap). Idempotent: joining an already-joined file is a no-op.
 
 **Module:** `src/preprocessing/join_hindi_lines.py` (`should_join` / `join_lines` / `process_doc` / `run`, mirroring §8). Writes `data/hindi/preprocessed/` in place; reads the same dir, so the OCR invariant (§36) is unaffected (Devanagari counts unchanged). Wired as `join_hi` into `make preprocess` and `run_pipeline.py` (`reextract -> join -> join_hi -> segment -> align -> output`).
@@ -1233,21 +1233,23 @@ Reasons:
 
 | Metric | Before | After |
 |--------|-------:|------:|
-| Preprocessed HI non-empty lines | 5,117 | 1,923 |
-| Segmented HI sentences | 7,418 | 3,416 |
-| Segmented HI danda-less | 4,501 (60.7%) | 1,303 (38.1%) |
-| Aligned pairs | 1,458 | 1,445 |
-| Aligned HI without danda | 806 (55.3%) | 176 (12.2%) |
-| Avg LaBSE similarity | 0.70 | 0.778 |
-| Train / dev / test pairs | 1,136 / 132 / 190 | 1,128 / 133 / 184 |
+| Preprocessed HI non-empty lines | 5,117 | 1,749 |
+| Segmented HI sentences | 7,418 | 3,221 |
+| Segmented HI danda-less | 4,501 (60.7%) | 1,299 (40.3%) |
+| Aligned pairs | 1,458 | 1,422 |
+| Aligned HI without danda | 806 (55.3%) | 155 (10.9%) |
+| Avg LaBSE similarity | 0.70 | 0.779 |
+| Train / dev / test pairs | 1,136 / 132 / 190 | 1,110 / 128 / 184 |
 
-**Remaining danda-less aligned texts (176) are largely legitimate:** standalone headers (`बनाम`, `निर्णय`, court names) that happen to align, colon-terminated definition intros (`... इस प्रकार है:-`), and OCR-garbled citations.
+**Remaining danda-less aligned texts (155) are largely legitimate:** standalone headers (`बनाम`, `निर्णय`, court names) that happen to align, colon-terminated definition intros (`... इस प्रकार है:-`), and OCR-garbled citations.
 
 **Known limitations (conservative by design):**
 - Blank-line-separated wraps are not joined (e.g. doc 1's charge list splits each item across a blank line); ~11 such fragments remain in doc 1.
 - Headers longer than 40 chars (e.g. `[एसएलपी (क्रि.)संख्या 2354 वर्ष 2023 से उत्पन्न]`) merge into the adjacent line; harmless since headers are alignment orphans.
 - OCR noise inside otherwise-joined sentences (dates like `46.07.2044`, stray `।"` / `!` tokens) is not repaired here.
 
-**Tests:** `tests/preprocessing/test_join_hindi_lines.py` -- tmp_path/monkeypatch only (never touches real data, per §35); synthetic wraps, real doc-6 OCR snippet, headers preserved, idempotency. Pipeline-order test updated for the `join_hi` step; output-format pair-count test updated to the regenerated 1,445.
+**Tests:** `tests/preprocessing/test_join_hindi_lines.py` -- tmp_path/monkeypatch only (never touches real data, per §35); synthetic wraps, real doc-6 OCR snippet, headers preserved, real-corpus idempotency (all 30 preprocessed files joined twice must be a no-op), next-header absorption guard. Pipeline-order test updated for the `join_hi` step; output-format pair-count test updated to the regenerated 1,422.
 
-**Pair-count change flagged:** the total is **1,445, not 1,458** -- joined HI units are longer and complete, so LaBSE mutual-best matching pairs slightly differently per doc. Do not silently claim the old 1,458.
+**Pair-count change flagged:** the total is **1,422, not 1,458** -- joined HI units are longer and complete, so LaBSE mutual-best matching pairs slightly differently per doc. Do not silently claim the old 1,458.
+
+**Revision (2026-08-02):** the first version of this step was non-idempotent: `should_join` only guarded the *previous* line, so a long wrap absorbed a following header (`निर्णय`), and re-running the join on that output absorbed the next sentence too (15/30 docs changed on pass 2). The committed data was also not reproducible from the committed code (22/30 docs differed). Fix: header detection now checks both lines and uses a vocabulary/pattern set rather than length alone; regenerated the full chain from raw OCR. Verified fixed-point (0/30 docs change on re-join) and segment(join(preprocessed)) == segmented (30/30).

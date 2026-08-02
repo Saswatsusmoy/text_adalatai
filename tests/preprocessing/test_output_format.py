@@ -89,7 +89,7 @@ class TestRun:
             dev = len(f.readlines())
         with open('data/processed/test.jsonl') as f:
             test = len(f.readlines())
-        assert train + dev + test == 1445
+        assert train + dev + test == 1422
 
     def test_splits_are_disjoint(self):
         train_docs = set()

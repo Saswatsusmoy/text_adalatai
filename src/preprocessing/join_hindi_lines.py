@@ -42,6 +42,27 @@ _TRAILING_PUNCT_RE = re.compile(r'[\s.,;:!?"\'\)\]]+$')
 # OCR wraps are almost always longer (median ~71 chars across all 30 docs).
 MAX_HEADER_LEN = 40
 
+# Short danda-less lines that are standalone headers, not sentence continuations.
+# Derived by scanning all 30 preprocessed files: the frequent short lines are case
+# headers, court names, and section labels; the rare short continuations (`के साथ`,
+# `प्रथम तल`) start with a postposition and must still join.
+_HEADER_WORDS = {
+    'बनाम',
+    'निर्णय',
+    'उद्घोषणा',
+    'उद्घोष्णा',
+    'उद्घघोषणा',
+    'अस्वीकरण',
+    'प्रतिवेद्य',
+    'अप्रतिवेद्य',
+    'हेडनोट',
+    'हेडनोट्स',
+    'आदेश',
+    'कोरम',
+    'प्रस्तुतियाँ',
+    'नई दिल्ली',
+}
+
 
 def _ends_sentence(line: str) -> bool:
     stripped = _TRAILING_PUNCT_RE.sub('', line.rstrip())
@@ -49,7 +70,20 @@ def _ends_sentence(line: str) -> bool:
 
 
 def _is_header_like(line: str) -> bool:
-    return len(line) <= MAX_HEADER_LEN and '।' not in line and '॥' not in line
+    if len(line) > MAX_HEADER_LEN:
+        return False
+    if '।' in line or '॥' in line:
+        return False
+    stripped = line.strip().rstrip('.,;:')
+    if stripped in _HEADER_WORDS:
+        return True
+    if stripped.startswith('न्यायमूर्ति'):
+        return True
+    if stripped.startswith('(न्यायमूर्ति'):
+        return True
+    if stripped.endswith((':', ';')):
+        return True
+    return False
 
 
 def should_join(prev_line: str, next_line: str) -> bool:
@@ -65,7 +99,7 @@ def should_join(prev_line: str, next_line: str) -> bool:
     if _ends_sentence(prev):
         return False
 
-    if _is_header_like(prev):
+    if _is_header_like(prev) or _is_header_like(nxt):
         return False
 
     return True

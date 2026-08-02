@@ -60,6 +60,14 @@ class TestShouldJoin:
     def test_not_join_short_header(self):
         assert not should_join('बनाम', 'चुन्नी लाल एवं अन्य')
 
+    def test_not_absorb_next_header(self):
+        long_party = 'उत्तर प्रदेश राज्य और अन्य अपीलार्थी (गण) बनाम उत्तम सिंह प्रत्यर्थी (गण)'
+        assert not should_join(long_party, 'निर्णय')
+
+    def test_not_absorb_next_judge_name(self):
+        long_party = 'उत्तर प्रदेश राज्य और अन्य अपीलार्थी (गण) बनाम उत्तम सिंह प्रत्यर्थी (गण)'
+        assert not should_join(long_party, 'न्यायमूर्ति पंकज मित्तल')
+
     def test_not_join_judge_name(self):
         assert not should_join('न्यायमूर्ति एम.आर. शाह', 'नई दिल्ली')
 
@@ -113,6 +121,24 @@ class TestJoinLines:
     def test_trailing_newline(self):
         text = LONG_LINE + '\nप्रतिवादी उपस्थित हुए।\n'
         assert join_lines(text) == LONG_LINE + ' प्रतिवादी उपस्थित हुए।\n'
+
+    def test_real_corpus_idempotent(self, tmp_path, monkeypatch):
+        import shutil
+
+        from src.config import HI_PREPROCESSED_DIR
+
+        monkeypatch.setattr(jh, 'HI_PREPROCESSED_DIR', tmp_path)
+        for p in HI_PREPROCESSED_DIR.glob('*.txt'):
+            shutil.copy(p, tmp_path / p.name)
+        # Pass 1 joins the committed corpus (already joined once by the pipeline).
+        run(verbose=False)
+        first = {p.name: p.read_text(encoding='utf-8') for p in tmp_path.glob('*.txt')}
+        # Pass 2 must be a no-op: joining an already-joined file changes nothing.
+        run(verbose=False)
+        for p in tmp_path.glob('*.txt'):
+            assert p.read_text(encoding='utf-8') == first[p.name], (
+                f'{p.name} changed on second join (non-idempotent)'
+            )
 
 
 class TestProcessDoc:
