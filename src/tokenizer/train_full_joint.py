@@ -79,6 +79,7 @@ def _train_subprocess(
     model_prefix: str,
     profile: str,
     model_type: str,
+    split_by_unicode_script: bool = False,
 ) -> int:
     """Run train in a child process so OOM kill does not kill the parent."""
     code = f"""
@@ -89,6 +90,7 @@ train(
     model_prefix={model_prefix!r},
     profile={profile!r},
     model_type={model_type!r},
+    split_by_unicode_script={split_by_unicode_script!r},
 )
 """
     env = {**dict(**__import__('os').environ), 'PYTHONPATH': '.'}
@@ -106,6 +108,7 @@ def run(
     force: bool = False,
     verbose: bool = True,
     model_type: str = 'unigram',
+    split_by_unicode_script: bool = False,
 ) -> dict:
     if model_type not in ('unigram', 'bpe'):
         raise ValueError(f'model_type must be unigram or bpe (got {model_type!r})')
@@ -115,6 +118,7 @@ def run(
         'dedupe': dstats,
         'vocab_size': vocab_size,
         'model_type': model_type,
+        'split_by_unicode_script': split_by_unicode_script,
         'attempts': [],
         'winner': None,
     }
@@ -140,7 +144,14 @@ def run(
             print(f'\n=== Attempt profile={profile} prefix={prefix} ===')
             print(f'    corpus={corpus} opts={TRAIN_PROFILES[profile]}')
 
-        rc = _train_subprocess(corpus, vocab_size, prefix, profile, model_type)
+        rc = _train_subprocess(
+            corpus,
+            vocab_size,
+            prefix,
+            profile,
+            model_type,
+            split_by_unicode_script=split_by_unicode_script,
+        )
         attempt = {
             'profile': profile,
             'prefix': prefix,
@@ -198,6 +209,11 @@ def main():
         default='unigram',
         help='SentencePiece model type (unigram default; bpe for the ablation)',
     )
+    parser.add_argument(
+        '--split-by-unicode-script',
+        action='store_true',
+        help='Force EN/HI script boundary splits (default: False, matches matrix family)',
+    )
     args = parser.parse_args()
     max_chars = None if args.max_chars == 0 else args.max_chars
     run(
@@ -205,6 +221,7 @@ def main():
         max_chars=max_chars,
         force=args.force,
         model_type=args.model_type,
+        split_by_unicode_script=args.split_by_unicode_script,
     )
 
 
