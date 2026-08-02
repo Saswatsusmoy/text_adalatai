@@ -15,7 +15,9 @@
     </p>
 
     <h2>1. Cross-family survey (motivation)</h2>
-    <p>What was measured on the raw assignment bitext (1,458 EN-HI pairs):</p>
+    <p>What was measured on the raw assignment bitext (1,458 EN-HI pairs before the Hindi
+      line-join step; the join then produced 1,422 longer, complete units -- see
+      <a href="pipeline.html">Pipeline</a>):</p>
     <ul>
       <li>Hindi <strong>chars per token</strong> (higher = denser packing)</li>
       <li><strong>HI / EN token ratio</strong> (closer to 1 = less Indic overhead)</li>
@@ -54,7 +56,7 @@
       </p>
     </div>
 
-    <p><strong>Domain SPM 41k vs large general tokenizers</strong> (raw assignment bitext, 1,458 pairs):</p>
+    <p><strong>Domain SPM 41k vs large general tokenizers</strong> (raw assignment bitext, 1,458 pairs before the Hindi join):</p>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Model</th><th>Vocab</th><th>HI c/t</th><th>HI/EN</th><th>Total tok</th></tr></thead>

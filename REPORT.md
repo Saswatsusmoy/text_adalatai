@@ -17,7 +17,7 @@ English to Hindi translation for Indian court judgments, with two goals:
 
 ### 1.1 Cross-family survey (motivation)
 
-Measured on the raw assignment bitext (1,458 EN-HI pairs): Hindi chars per token, HI/EN token ratio, total tokens, presence of Devanagari pieces in the vocab.
+Measured on the raw assignment bitext (1,458 EN-HI pairs, pre Hindi-line-join): Hindi chars per token, HI/EN token ratio, total tokens, presence of Devanagari pieces in the vocab.
 
 | Family | Examples | Hindi behavior on legal text |
 |--------|----------|------------------------------|
@@ -108,9 +108,11 @@ Artifacts: `data/analysis/tokenizer_matrix.json` (35-model bench), `data/analysi
 | Item | Value |
 |------|------:|
 | Parallel judgments | 30 (Supreme Court of India)[^court] |
-| After LaBSE + filters | **1,458** pairs |
-| Train / dev / test | **1,136 / 132 / 190** |
+| After LaBSE + filters | **1,422** pairs[^join] |
+| Train / dev / test | **1,110 / 128 / 184** |
 | Split | **Document-level**, seed 42 |
+
+[^join]: The alignment produced 1,458 pairs before the Hindi line-join step. Joining danda-aware OCR hard-wraps yields longer, complete units, so LaBSE mutual-best pairing shifts slightly (1,458 -> 1,422). Scores in Section 4 were measured on the pre-join corpus; no retrain was run after the data-quality fix.
 
 [^court]: The assignment package ships as `HC Judgments _ ML Assignment Text.xlsx`, but every PDF is a Supreme Court judgment (21/30 declare `IN THE SUPREME COURT OF INDIA` in the header; the remaining 9 use the equivalent `[YYYY] N S.C.R.` / `INSC` neutral citation). The cases are SC appeals reviewing High Court orders (mostly Allahabad HC), which likely explains the source-file naming.
 

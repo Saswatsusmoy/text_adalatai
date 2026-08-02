@@ -41,7 +41,7 @@ PDF (EN/HI)
 
 | Output | Path |
 |--------|------|
-| Aligned pairs | `data/aligned/all.jsonl` (~1458) |
+| Aligned pairs | `data/aligned/all.jsonl` (1,422 after Hindi line-join) |
 | Frozen splits | `data/processed/{train,dev,test}.jsonl` |
 | Doc IDs | `src/config.py` `TRAIN_DOC_IDS` / `DEV_DOC_IDS` / `TEST_DOC_IDS` |
 

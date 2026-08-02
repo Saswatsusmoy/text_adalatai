@@ -19,13 +19,16 @@
       <table>
         <thead><tr><th>Split</th><th>Path</th><th>Pairs</th><th>Docs</th></tr></thead>
         <tbody>
-          <tr><td>test</td><td><code>data/processed/test.jsonl</code></td><td class="num">190</td><td>1, 4, 21</td></tr>
-          <tr><td>dev</td><td><code>data/processed/dev.jsonl</code></td><td class="num">132</td><td>8, 9, 24</td></tr>
-          <tr><td>train</td><td><code>data/processed/train.jsonl</code></td><td class="num">1,136</td><td>remaining</td></tr>
+          <tr><td>test</td><td><code>data/processed/test.jsonl</code></td><td class="num">184</td><td>1, 4, 21</td></tr>
+          <tr><td>dev</td><td><code>data/processed/dev.jsonl</code></td><td class="num">128</td><td>8, 9, 24</td></tr>
+          <tr><td>train</td><td><code>data/processed/train.jsonl</code></td><td class="num">1,110</td><td>remaining</td></tr>
         </tbody>
       </table>
     </div>
-    <p><strong>Purpose:</strong> in-domain Supreme Court judgment text. Hard, small, frozen.</p>
+    <p><strong>Purpose:</strong> in-domain Supreme Court judgment text. Hard, small, frozen.
+      <span class="muted">Split pair counts reflect the Hindi line-join step (1,458 -&gt; 1,422 total);
+      the shipped A2 scores on the next pages were measured on the pre-join corpus, since no
+      retrain was run after the data-quality fix.</span></p>
 
     <h2>Policy E -- external legal holdout</h2>
     <p>

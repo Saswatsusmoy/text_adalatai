@@ -30,7 +30,7 @@
     <p><strong>Done:</strong></p>
     <ul>
       <li>Cross-family survey: SentencePiece Unigram, multilingual BPE (NLLB / o200k), byte-level BPE (Llama-line).</li>
-      <li>Metrics: HI chars/token, HI/EN token ratio, total tokens on 1,458 pairs.</li>
+      <li>Metrics: HI chars/token, HI/EN token ratio, total tokens on the aligned assignment corpus (1,422 pairs after the Hindi line-join step).</li>
       <li>Domain SPM v1 (Prarabdha mono HI 16/32/41k) and v2 joint full Unigram (41/48/64k ablation).</li>
       <li>Optional vocab extend on NLLB (C1c v1 bulk, C1c v2 careful) with embedding updates.</li>
     </ul>
@@ -44,7 +44,7 @@
     <ul>
       <li>Hindi OCR (Tesseract), EN line join, spaCy/danda segmentation, LaBSE mutual-best alignment.</li>
       <li>Filters: min similarity 0.5, EN:HI char ratio 0.3-3.0, near-dedup.</li>
-      <li>Document-level split seed 42 -&gt; 1,136 / 132 / 190 (not sentence-random).</li>
+      <li>Document-level split seed 42 -&gt; 1,110 / 128 / 184 (not sentence-random).</li>
       <li>Optional public legal parallel: MILPaC + Anuvaad Stage A (~993k filtered).</li>
     </ul>
     <p><strong>Where:</strong> <code>src/preprocessing/</code>, page <a href="pipeline.html">Data pipeline</a>.</p>

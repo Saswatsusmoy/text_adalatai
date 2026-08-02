@@ -45,7 +45,7 @@ data/ PDFs
 
 | Phase | State |
 |-------|-------|
-| Preprocessing | Done -- 1,458 EN-HI pairs, doc-level 80/10/10 |
+| Preprocessing | Done -- 1,422 EN-HI pairs (after Hindi line-join), doc-level 80/10/10 |
 | Tokenizer analysis + domain SPM | Done -- **joint_full 41k freeze** |
 | External Stage A (MILPaC + Anuvaad) | Done -- ~993k pairs + dual-policy split |
 | Track D NLLB LoRA | Done -- **production = A2** |
