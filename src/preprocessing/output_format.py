@@ -109,7 +109,7 @@ def build_report(pairs: list[dict]) -> dict:
         'pipeline': {
             'steps_completed': [
                 '1. PDF re-extraction (Tesseract OCR)',
-                '2. Line joining (English)',
+                '2. Line joining (English + Hindi OCR hard wraps)',
                 '3. Sentence segmentation (spaCy + danda split)',
                 '4. LaBSE alignment + quality filters',
             ],

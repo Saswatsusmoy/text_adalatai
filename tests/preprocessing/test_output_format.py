@@ -82,13 +82,14 @@ class TestRun:
         assert (tmp_path / 'alignment_report.json').exists()
 
     def test_total_pairs_preserved(self):
+        # Pair count reflects the join_hi pipeline (see DESIGN_DECISIONS.md).
         with open('data/processed/train.jsonl') as f:
             train = len(f.readlines())
         with open('data/processed/dev.jsonl') as f:
             dev = len(f.readlines())
         with open('data/processed/test.jsonl') as f:
             test = len(f.readlines())
-        assert train + dev + test == 1458
+        assert train + dev + test == 1445
 
     def test_splits_are_disjoint(self):
         train_docs = set()

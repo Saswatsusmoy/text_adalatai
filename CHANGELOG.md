@@ -4,6 +4,23 @@
 
 ### Fixed
 
+- **Hindi OCR hard-wraps now joined (danda-aware) before segmentation** (DESIGN §37):
+  - New `src/preprocessing/join_hindi_lines.py` (mirror of `join_lines.py`): joins a line to
+    the next when it does not end in a danda (।) and the join does not cross a blank line, a
+    numbered item / bullet / list marker, or a short danda-less header (case headers, judge
+    names, section labels like `बनाम`/`निर्णय`). Dates (DD.MM.YYYY) are exempt from the
+    numbered-item guard so date-start continuations still join. Writes `preprocessed/` in
+    place; idempotent.
+  - Wired as `join_hi` into `make preprocess` and `run_pipeline.py` (`reextract -> join ->
+    join_hi -> segment -> align -> output`).
+  - Effect on real corpus: preprocessed HI lines 5,117 -> 1,923; segmented HI sentences
+    7,418 -> 3,416 with danda-less fraction 60.7% -> 38.1% (remaining are headers /
+    citations / colon intros); aligned pairs 1,458 -> 1,445 with HI-without-danda fraction
+    55.3% -> 12.2%; avg LaBSE similarity 0.70 -> 0.778; train/dev/test 1,136/132/190 ->
+    1,128/133/184.
+  - Tests: `tests/preprocessing/test_join_hindi_lines.py` (tmp_path/monkeypatch only;
+    synthetic + real doc-6 OCR snippet, idempotency).
+
 - **OCR invariant now enforced in code, not a manual backup dir** (DESIGN §36):
   - `PDFTOTEXT_CMD` resolved via `shutil.which('pdftotext')` (was hardcoded
     `/opt/homebrew/bin/pdftotext`); `extract_with_pdftotext` returns `None` when absent.

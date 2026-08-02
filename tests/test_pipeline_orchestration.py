@@ -50,6 +50,7 @@ class TestRunPipelineRegistry:
         assert run_pipeline.expand_steps(['preprocess']) == [
             'reextract',
             'join',
+            'join_hi',
             'segment',
             'align',
             'output',

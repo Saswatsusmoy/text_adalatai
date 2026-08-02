@@ -18,6 +18,7 @@
     <pre class="codeblock">PDF EN/HI
   -&gt; reextract_pdfs.py      # Tesseract OCR for Hindi (not PDF text layer)
   -&gt; join_lines.py          # EN hard wraps + proper nouns
+  -&gt; join_hindi_lines.py    # HI OCR hard wraps (danda-aware)
   -&gt; segment_sentences.py   # spaCy EN; danda HI
   -&gt; align_sentences.py     # LaBSE mutual-best + QC filters
   -&gt; output_format.py       # doc-level 80/10/10, seed 42
@@ -62,13 +63,75 @@
       continuation heads: Court, Appellant, Section, ...).</p>
     <p><strong>Result:</strong> roughly 58% fewer non-empty EN lines after join.</p>
 
-    <h3>3. Segmentation -- <code>segment_sentences.py</code></h3>
+    <h3>3. Hindi line join -- <code>join_hindi_lines.py</code></h3>
+    <p><strong>Why:</strong> Tesseract OCR hard-wraps Hindi mid-sentence at PDF line boundaries
+      (median ~71 chars/line, verified over all 30 docs). A logical sentence spans 2+ OCR lines
+      and only the last carries a danda (।). Because segmentation routes every danda-less line to
+      the English spaCy path, wrapped fragments survived as truncated danda-less "sentences" and
+      entered alignment: <strong>806 / 1,458 (55.3%) of aligned HI texts lacked a danda</strong> --
+      the single largest root cause of alignment defects and downstream translation noise.</p>
+    <p><strong>How:</strong> <code>join_lines(text)</code> buffers consecutive lines and
+      <code>should_join(prev, next)</code> decides each boundary. Join unless any guard fires:</p>
+    <ul>
+      <li>a <strong>blank line</strong> sits between the lines (paragraph boundary);</li>
+      <li><code>next</code> starts a <strong>numbered item / bullet / list marker</strong> --
+        Arabic or Devanagari digits, short roman numerals, <code>(क)</code>/<code>(॥)</code>,
+        <code>-</code>/<code>•</code>;</li>
+      <li><code>prev</code> ends in a <strong>sentence terminator</strong> (danda, tolerating
+        trailing quotes/punct such as <code>।"</code>);</li>
+      <li><code>prev</code> is a <strong>short danda-less header</strong> (&lt;= 40 chars: case
+        headers, judge names, section labels -- data shows these are headers, not wraps).</li>
+    </ul>
+    <p>Dates (DD.MM.YYYY, incl. Devanagari digits) also start with digits + dots, so they are
+      <em>exempt</em> from the numbered-item guard: a date-start line is usually a mid-sentence
+      continuation (54 real cases would otherwise be missed). The step writes
+      <code>preprocessed/</code> in place and is idempotent (re-running is a no-op).</p>
+    <p><strong>Example (doc 6, real OCR):</strong></p>
+    <pre class="codeblock">before  (4 OCR lines; only the last carries the danda):
+ 1  . रिट याचिका सं. 448 वर्ष 4996 (एस/बी) में इलाहाबाद उच्च
+ 2  न्यायालय(लखनऊ बेंच) द्वारा पारित 46.07.2044 दिनांकित आशक्षेपित निर्णय और
+ 3  आदेश से व्यथित और असंतुष्ट महसूस करते हुए, उ.प्र. राज्य ने वर्तमान अपील की
+ 4  है।
+
+after   (1 joined line):
+     . रिट याचिका सं. 448 वर्ष 4996 (एस/बी) में इलाहाबाद उच्च न्यायालय(लखनऊ
+     बेंच) द्वारा पारित 46.07.2044 दिनांकित आशक्षेपित निर्णय और आदेश से व्यथित और
+     असंतुष्ट महसूस करते हुए, उ.प्र. राज्य ने वर्तमान अपील की है।</pre>
+    <p>Case headers stay untouched (each is a short danda-less line): <code>बनाम</code>,
+      <code>निर्णय</code>, <code>न्यायमूर्ति एम.आर. शाह</code>, court / party lines, and the
+      repeated <code>उद्घोषणा</code>/<code>अस्वीकरण</code> disclaimer blocks.</p>
+    <p><strong>Result (full re-run of join -&gt; segment -&gt; align -&gt; output):</strong></p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Stage</th><th>Before</th><th>After</th></tr></thead>
+        <tbody>
+          <tr><td>Preprocessed HI non-empty lines</td><td class="num">5,117</td><td class="num">1,923</td></tr>
+          <tr><td>Segmented HI sentences</td><td class="num">7,418</td><td class="num">3,416</td></tr>
+          <tr><td>Segmented HI danda-less</td><td class="num">60.7%</td><td class="num">38.1%</td></tr>
+          <tr><td>Aligned pairs</td><td class="num">1,458</td><td class="num">1,445</td></tr>
+          <tr><td>Aligned HI without danda</td><td class="num">55.3%</td><td class="num">12.2%</td></tr>
+          <tr><td>Avg LaBSE similarity</td><td class="num">0.70</td><td class="num">0.78</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout warn">
+      <div class="label">Pair count changed -- not a regression</div>
+      <p>Total pairs moved <strong>1,458 -&gt; 1,445</strong>. Joined HI units are longer and
+        complete, so LaBSE mutual-best matching pairs slightly differently per doc. The remaining
+        12.2% danda-less aligned texts are mostly standalone headers that happen to align,
+        colon-terminated definition intros (<code>... इस प्रकार है:-</code>), and OCR-garbled
+        citations. Known conservative limits: blank-line-separated wraps (e.g. doc 1 charge list)
+        stay split, and headers longer than 40 chars merge into the adjacent line (harmless, as
+        they are alignment orphans).</p>
+    </div>
+
+    <h3>4. Segmentation -- <code>segment_sentences.py</code></h3>
     <p><strong>Why:</strong> Alignment needs sentence units while preserving legal abbreviations.</p>
     <p><strong>How:</strong> spaCy <code>en_core_web_sm</code> for English; danda-aware split for Hindi.</p>
-    <p><strong>Result (order of magnitude):</strong> EN ~2,495 sentences, HI ~7,418 -- strongly
-      asymmetric, so 1:1 line alignment is impossible without embeddings.</p>
+    <p><strong>Result (order of magnitude):</strong> EN ~2,495 sentences, HI ~3,416 after joining
+      (was ~7,418 as fragmented OCR lines).</p>
 
-    <h3>4. Alignment -- <code>align_sentences.py</code></h3>
+    <h3>5. Alignment -- <code>align_sentences.py</code></h3>
     <p><strong>Why:</strong> 29/30 docs have EN/HI sentence count mismatch; only document-level
       parallelism is guaranteed.</p>
     <p><strong>How:</strong> LaBSE sentence embeddings, mutual-best pairing, then QC:</p>
@@ -78,15 +141,16 @@
       <li>min length &gt; 3 chars</li>
       <li>EN Jaccard near-dedup 0.85 (drop weaker of near-duplicates)</li>
     </ul>
-    <p><strong>Result:</strong> <strong>1,458</strong> pairs written to <code>data/aligned/all.jsonl</code>.
-      Under the same QC, LaBSE beat BGE-M3 (1,458 vs 1,347).</p>
+    <p><strong>Result:</strong> <strong>1,445</strong> pairs written to <code>data/aligned/all.jsonl</code>
+      (1,458 before the Hindi join step; joined HI units are longer/complete, so mutual-best pairs
+      shift slightly). Avg LaBSE similarity 0.78.</p>
 
-    <h3>5. Split -- <code>output_format.py</code></h3>
+    <h3>6. Split -- <code>output_format.py</code></h3>
     <p><strong>Why:</strong> Sentence-level random splits leak the same judgment into train and test.</p>
     <p><strong>How:</strong> Document-level assignment, seed 42, roughly 80/10/10 by docs then by pairs:</p>
-    <pre class="codeblock">train docs: 2,3,5,6,7,10-20,22,23,25-30  -&gt; 1,136 pairs
-dev docs:   8, 9, 24                     -&gt; 132 pairs
-test docs:  1, 4, 21                     -&gt; 190 pairs</pre>
+    <pre class="codeblock">train docs: 2,3,5,6,7,10-20,22,23,25-30  -&gt; 1,128 pairs
+dev docs:   8, 9, 24                     -&gt; 133 pairs
+test docs:  1, 4, 21                     -&gt; 184 pairs</pre>
     <p>IDs live in <code>src/config.py</code> as frozen constants. Do not re-roll.</p>
 
     <h2>Steps deliberately skipped</h2>

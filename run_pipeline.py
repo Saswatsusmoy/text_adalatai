@@ -42,6 +42,11 @@ STEPS = {
         'args': [],
         'desc': 'Join hard-wrapped English lines',
     },
+    'join_hi': {
+        'module': 'src.preprocessing.join_hindi_lines',
+        'args': [],
+        'desc': 'Join hard-wrapped Hindi OCR lines (danda-aware)',
+    },
     'segment': {
         'module': 'src.preprocessing.segment_sentences',
         'args': [],
@@ -103,7 +108,7 @@ STEPS = {
 }
 
 GROUPS = {
-    'preprocess': ['reextract', 'join', 'segment', 'align', 'output'],
+    'preprocess': ['reextract', 'join', 'join_hi', 'segment', 'align', 'output'],
     'external': ['external_ingest', 'external_eval_split', 'eval_sets'],
     'external_full': [
         'external_download',
@@ -118,6 +123,7 @@ GROUPS = {
     'all': [
         'reextract',
         'join',
+        'join_hi',
         'segment',
         'align',
         'output',

@@ -1,4 +1,4 @@
-.PHONY: install install-dev venv reextract verify-ocr join segment align output preprocess \
+.PHONY: install install-dev venv reextract verify-ocr join join_hi segment align output preprocess \
 	external-download external-ingest external-eval-split \
 	tokenizer-prepare tokenizer-train-16k tokenizer-train-32k tokenizer-train-41k \
 	tokenizer-train-all tokenizer-train tokenizer-bench \
@@ -46,6 +46,9 @@ verify-ocr:
 join:
 	PYTHONPATH=. python3 src/preprocessing/join_lines.py
 
+join_hi:
+	PYTHONPATH=. python3 src/preprocessing/join_hindi_lines.py
+
 segment:
 	PYTHONPATH=. python3 src/preprocessing/segment_sentences.py
 
@@ -55,7 +58,7 @@ align:
 output:
 	PYTHONPATH=. python3 src/preprocessing/output_format.py
 
-preprocess: reextract join segment align output
+preprocess: reextract join join_hi segment align output
 	@echo "Preprocessing complete"
 
 # --- Phase 1b: external Stage A + dual-policy split ---
