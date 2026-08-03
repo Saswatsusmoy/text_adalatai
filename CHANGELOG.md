@@ -4,6 +4,18 @@
 
 ### Added
 
+- **Story reflects the Phase 4 eval-harness fixes** (DESIGN §41):
+  - `scoreboard.html`: Phase 4 callout stating the historical table predates CIs
+    (verdicts are point estimates, not re-scored); COMET section caveat added.
+  - `dual-eval.html`: new "Phase 4 eval harness" before/after table (CIs,
+    paired difference CI, fingerprints, verbosity, ref-clean, entities, COMET
+    cache, MBR seed) + expanded code list.
+  - `failures.html`: five new traps (COMET cache stale-forever, CI objects
+    discarded, no fingerprints, verbosity unpenalized, silent embed-row resume).
+  - `interview.html`: Q&A "How do you know your numbers aren't noise?".
+  - `artifacts.html`: fingerprint / entity_panel / ref_cleaner / comet_score
+    added to the evaluation module list.
+
 - **Evaluation harness Phase 4 fixes** (DESIGN §41): harness code + tests only,
   no re-decode / re-score of real data, no edits to historical score tables.
   - **COMET cache invalidation** (`comet_score.py`): cache key is now

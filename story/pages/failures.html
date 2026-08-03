@@ -88,6 +88,26 @@
             <td>Raise when <code>new_embed_start</code> configured; grad mask reinstalled</td>
           </tr>
           <tr>
+            <td>COMET cache stale-forever</td>
+            <td>Cache keyed on (tag, suite) only; a regenerated hyp file reported the old score</td>
+            <td>Key on hyp-file SHA256 + model; schema v2, old caches ignored</td>
+          </tr>
+          <tr>
+            <td>CI objects discarded</td>
+            <td>sacreBLEU computed bootstrap CIs but <code>metrics_mt</code> returned only <code>.score</code> -- "DoRA = equal", "B' edges A2" are point estimates on n=117-3000</td>
+            <td>Per-suite 95% CIs + paired difference CI (<code>--compare-tags</code>)</td>
+          </tr>
+          <tr>
+            <td>No report fingerprints</td>
+            <td>Resume keyed on (en, hi) text only; stale hyp rows could mix into a new-config run</td>
+            <td>Config + hyp-file fingerprint per report; resume refuses mismatch</td>
+          </tr>
+          <tr>
+            <td>Verbosity unpenalized</td>
+            <td>I_test hyps ~1.377x ref length scored equal (BLEU bp 1.0, chrF++ no length term)</td>
+            <td><code>len_ratio</code> + TER columns make it visible</td>
+          </tr>
+          <tr>
             <td>C1c bulk +8k tokens</td>
             <td>I chrF 24.9; breaks good NLLB singles</td>
             <td>Ablation</td>

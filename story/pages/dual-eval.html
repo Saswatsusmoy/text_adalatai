@@ -70,11 +70,68 @@ E_anuvaad_test BLEU / chrF++</pre>
       </p>
     </div>
 
+    <h2>Phase 4 eval harness (statistical grounding)</h2>
+    <p>
+      A deep-read found the reported numbers rested on unsound mechanics; all fixed as additive
+      harness work (no re-scoring of historical results):
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Mechanic</th><th>Before</th><th>After (Phase 4)</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Confidence intervals</td>
+            <td>sacreBLEU CI objects discarded; verdicts are point estimates</td>
+            <td>per-suite 95% bootstrap CI (mean, ci_low, ci_high) via sacreBLEU built-in</td>
+          </tr>
+          <tr>
+            <td>System-vs-system</td>
+            <td>eyeballed delta on one column</td>
+            <td>paired-bootstrap difference CI (<code>--compare-tags A,B</code>): delta + CI + <code>significant</code></td>
+          </tr>
+          <tr>
+            <td>Report provenance</td>
+            <td>no model/adapter/beam/vocab in report; stale resume possible</td>
+            <td>config fingerprint + hyp-file SHA256 per report; resume refuses mismatch (<code>--force-resume</code>)</td>
+          </tr>
+          <tr>
+            <td>Verbosity</td>
+            <td>hidden (I_test hyps ~1.377x ref, BLEU bp 1.0)</td>
+            <td><code>len_ratio</code> + TER columns per suite</td>
+          </tr>
+          <tr>
+            <td>Ref noise</td>
+            <td>caps every score, no alternative</td>
+            <td>labeled <code>ref_cleaned</code> column (OCR/list-marker artifacts stripped from refs only)</td>
+          </tr>
+          <tr>
+            <td>"Did it translate the law?"</td>
+            <td>not measured</td>
+            <td><code>entities</code> panel: legal-entity recall/precision/F1 (probes + citations + dates)</td>
+          </tr>
+          <tr>
+            <td>COMET cache</td>
+            <td>stale-forever on (tag, suite)</td>
+            <td>keyed on hyp-file SHA256 + model; schema v2, old caches ignored</td>
+          </tr>
+          <tr>
+            <td>MBR reproducibility</td>
+            <td>unseeded sampling</td>
+            <td>seeded (default 12345, <code>--seed</code>), recorded in report</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
     <h2>Code</h2>
     <ul>
       <li><code>src/preprocessing/split_external_eval.py</code> -- carve holdouts</li>
       <li><code>src/evaluation/eval_sets.py</code> -- suite paths + leak validation</li>
-      <li><code>src/evaluation/metrics_mt.py</code> -- BLEU / chrF++</li>
+      <li><code>src/evaluation/metrics_mt.py</code> -- BLEU / chrF++ / TER / CIs / ref-cleaned / entities</li>
+      <li><code>src/evaluation/fingerprint.py</code> -- config + hyp-file fingerprints</li>
+      <li><code>src/evaluation/entity_panel.py</code> -- legal-entity match</li>
+      <li><code>src/evaluation/ref_cleaner.py</code> -- reference-only OCR noise strip</li>
+      <li><code>src/evaluation/comet_score.py</code> -- COMET-22, cache v2</li>
       <li><code>src/evaluation/zero_shot_nllb.py</code> -- decode base or adapters, write hyps + report</li>
     </ul>
   </div>

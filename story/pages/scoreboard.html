@@ -13,6 +13,20 @@
       H200 CUDA bf16 batch 32. Metrics: sacreBLEU BLEU and chrF++ (word_order=2). Machine dumps:
       <code>data/analysis/*_report.json</code> and <code>final_dual_policy_report.json</code>.
     </p>
+    <div class="callout warn">
+      <div class="label">Phase 4 harness: confidence intervals came after these numbers</div>
+      <p>
+        The table below is the <strong>historical</strong> board, produced before the Phase 4 eval
+        harness work. It was scored with no bootstrap confidence intervals, so the deltas on this
+        page -- "DoRA = equal quality (within +/-0.5 chrF++)", "B' edges A2" -- are
+        <strong>point estimates</strong>, not statistically-grounded verdicts. No system was
+        re-decoded or re-scored to produce the Phase 4 additions. Reports written from now on
+        include per-suite 95% bootstrap CIs, a paired-bootstrap difference CI
+        (<code>--compare-tags A,B</code>), TER + length-ratio, a ref-cleaned column, an entity
+        panel, and hyp-file fingerprints. See <a href="dual-eval.html">Dual eval</a> and
+        <a href="mbr.html">MBR</a>.
+      </p>
+    </div>
 
     <h2>Full dual-policy table (BLEU / chrF++)</h2>
     <div class="table-wrap">
@@ -155,6 +169,8 @@
       Adapters slightly regress E_milpac COMET vs zero-shot &mdash; MILPaC is closer to NLLB's
       base training distribution, and legal-domain LoRA shifts toward SC-style Hindi.
       DoRA is inside noise of A2 on all three suites.
+      <span class="muted">(Phase 4: these COMET deltas are single-system point scores without
+      paired CIs; the same caveat as the BLEU/chrF++ table applies.)</span>
     </p>
   </div>
   <script src="../js/site.js"></script>
