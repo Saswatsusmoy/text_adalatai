@@ -4,6 +4,22 @@
 
 ### Fixed
 
+- **Tokenizer tests for all previously-untested modules** (AGENTS.md coverage):
+  - `test_matrix_configs.py`: dataclass determinism, name/prefix, opts_tag,
+    phase1 (20 configs) / phase2 (5 toggles) presets, `_with` override,
+    sus=False default, seed-informational.
+  - `test_bench_matrix.py`: probe single/multi-piece, UNK rate (incl. div-by-zero),
+    model discovery glob, held-out doc filtering.
+  - `test_benchmark.py`: doc-id normalization, Devanagari counting, entropy
+    (uniform/single/empty), Dev-pieces on a tiny SPM.
+  - `test_train_matrix.py`: top-name ranking by HI c/t + v2_joint filter,
+    manifest resume (cached skip, corrupt-manifest fallback).
+  - `test_train_v2.py`: model prefix, corpus ensure/prepare/raise, grid skip/train.
+  - `test_train_full_joint.py`: unigram/bpe attempt ladders.
+  - `test_deep_dive.py`: BPE merge-priority records + Devanagari detection,
+    theoretical-bounds keys.
+  - Tiny SPM fixtures train on synthetic legal text (tmp_path only).
+
 - **Tokenizer freeze now matrix-consistent (split_by_unicode_script=False)** (DESIGN §39):
   - `train()` never passed `split_by_unicode_script`, so the shipped freeze
     `joint_full_41000` inherited SPM's default True while all 35 matrix models
