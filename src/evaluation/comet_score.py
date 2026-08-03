@@ -1,7 +1,13 @@
 """COMET-22 (Unbabel/wmt22-comet-da) scoring for all *_hyps.jsonl files.
 
 Reference-based COMET. Each hyp file needs `en_text`, `hi_text`, `hyp_hi`.
-Writes one summary JSON with { tag: { suite: {score, n} } }.
+Writes one summary JSON with { tag: { suite: {score, n, fingerprint} } }.
+
+Phase 4: the cache is keyed on (tag, suite, hyp-file SHA256 prefix, model_id),
+so regenerating a hyp file under an existing tag (decode fix, resume that
+changed rows, different COMET model) re-scores instead of silently reporting
+the stale score. The summary schema is bumped to 'v2'; pre-v2 cache files are
+ignored entirely.
 """
 
 from __future__ import annotations
@@ -12,12 +18,14 @@ import re
 import time
 from pathlib import Path
 
+from src.evaluation.fingerprint import file_sha256_prefix
 from src.utils.jsonl import load_jsonl
 
 
 DEFAULT_MODEL = 'Unbabel/wmt22-comet-da'
 DEFAULT_ANALYSIS = Path('data/analysis')
 DEFAULT_SUMMARY = DEFAULT_ANALYSIS / 'comet22_summary.json'
+SUMMARY_SCHEMA = 'v2'
 
 _SUITE_ORDER = (
     'I_test',
@@ -37,6 +45,35 @@ def parse_hyp_path(path: Path) -> tuple[str, str] | None:
     suite = m.group(1)
     tag = path.name[: -(len(suite) + len('_hyps.jsonl') + 1)]
     return tag, suite
+
+
+def should_rescore(entry: dict | None, fingerprint: str, model_id: str) -> bool:
+    if not entry or entry.get('score') is None:
+        return True
+    if entry.get('fingerprint') != fingerprint:
+        return True
+    if entry.get('model_id') != model_id:
+        return True
+    return False
+
+
+def load_summary(summary_path: Path) -> dict[str, dict[str, dict]]:
+    if not summary_path.exists():
+        return {}
+    payload = json.loads(summary_path.read_text(encoding='utf-8'))
+    if payload.get('schema') != SUMMARY_SCHEMA:
+        print('  old comet cache schema found; ignoring cache and rewriting as v2')
+        return {}
+    return payload.get('systems', {})
+
+
+def save_summary(summary_path: Path, model_id: str, systems: dict[str, dict[str, dict]]):
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {'schema': SUMMARY_SCHEMA, 'model': model_id, 'systems': systems}
+    summary_path.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False),
+        encoding='utf-8',
+    )
 
 
 def score_file(model, path: Path, gpus: int, batch_size: int) -> dict:
@@ -67,9 +104,7 @@ def run(
     model = load_from_checkpoint(ckpt)
 
     paths: list[Path] = sorted(analysis_dir.glob('*_hyps.jsonl'))
-    summary: dict[str, dict[str, dict]] = {}
-    if summary_path.exists():
-        summary = json.loads(summary_path.read_text(encoding='utf-8')).get('systems', {})
+    summary = load_summary(Path(summary_path))
 
     for path in paths:
         parsed = parse_hyp_path(path)
@@ -80,24 +115,24 @@ def run(
             continue
         if only_suite and suite != only_suite:
             continue
-        if summary.get(tag, {}).get(suite, {}).get('score') is not None:
+        fingerprint = file_sha256_prefix(path)
+        entry = summary.get(tag, {}).get(suite)
+        if not should_rescore(entry, fingerprint, model_id):
             print(f'  skip (cached): {tag} / {suite}')
             continue
         t0 = time.time()
         r = score_file(model, path, gpus=gpus, batch_size=batch_size)
         r['elapsed_s'] = round(time.time() - t0, 1)
         r['path'] = str(path)
+        r['fingerprint'] = fingerprint
+        r['model_id'] = model_id
         summary.setdefault(tag, {})[suite] = r
         print(
             f'  {tag} / {suite}: '
             f'{"score=" + format(r["score"], ".4f") if r.get("score") is not None else r.get("error")}  '
             f'n={r["n"]}  {r["elapsed_s"]}s'
         )
-        summary_path.parent.mkdir(parents=True, exist_ok=True)
-        summary_path.write_text(
-            json.dumps({'model': model_id, 'systems': summary}, indent=2, ensure_ascii=False),
-            encoding='utf-8',
-        )
+        save_summary(Path(summary_path), model_id, summary)
 
     return {'model': model_id, 'systems': summary}
 

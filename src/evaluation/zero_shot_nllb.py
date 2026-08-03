@@ -8,15 +8,25 @@ import torch
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
 from src.evaluation.eval_sets import load_jsonl, scoring_suites
+from src.evaluation.fingerprint import (
+    build_config_fingerprint,
+    check_resume_fingerprint,
+    file_sha256_prefix,
+)
 from src.evaluation.mbr_decode import (
     DEFAULT_SAMPLES as MBR_DEFAULT_SAMPLES,
+    DEFAULT_SEED as MBR_DEFAULT_SEED,
     DEFAULT_TEMPERATURE as MBR_DEFAULT_TEMPERATURE,
     DEFAULT_TOP_P as MBR_DEFAULT_TOP_P,
     DEFAULT_UTILITY as MBR_DEFAULT_UTILITY,
     translate_batch_mbr,
 )
-from src.evaluation.metrics_mt import score_pairs
-from src.training.common import empty_device_cache, is_cuda
+from src.evaluation.metrics_mt import (
+    DEFAULT_BOOTSTRAP_SAMPLES,
+    compare_score_pairs,
+    score_pairs,
+)
+from src.training.common import empty_device_cache, is_cuda, set_seed
 
 
 DEFAULT_MODEL = 'facebook/nllb-200-distilled-600M'
@@ -24,6 +34,9 @@ SRC_LANG = 'eng_Latn'
 TGT_LANG = 'hin_Deva'
 OUT_DIR = Path('data/analysis')
 DEFAULT_SUITES = ['I_test', 'E_milpac_test', 'E_anuvaad_test']
+DEFAULT_SEED = MBR_DEFAULT_SEED
+BOOTSTRAP_SAMPLES = DEFAULT_BOOTSTRAP_SAMPLES
+PAIRED_RESAMPLES = DEFAULT_BOOTSTRAP_SAMPLES
 
 
 def pick_device(prefer_mps: bool = True) -> str:
@@ -79,7 +92,8 @@ def load_model(
     model.eval()
     if getattr(model, 'generation_config', None) is not None:
         model.generation_config.max_length = None
-    return tokenizer, model, device
+    dtype_name = str(dtype).split('.')[-1]
+    return tokenizer, model, device, dtype_name
 
 
 def _forced_bos_id(tokenizer) -> int:
@@ -151,6 +165,7 @@ def translate_pairs(
     verbose: bool = True,
     tag: str = 'zero_shot_nllb',
     mbr: dict | None = None,
+    seed: int = DEFAULT_SEED,
 ) -> list[dict]:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     path = hyp_path_for(suite_name, tag=tag)
@@ -168,6 +183,8 @@ def translate_pairs(
         return results
 
     forced_bos = _forced_bos_id(tokenizer) if mbr else None
+    if mbr:
+        set_seed(seed)
 
     t0 = time.time()
     with open(path, 'a' if results else 'w', encoding='utf-8') as f:
@@ -226,9 +243,14 @@ def score_hyp_file(
     suite_name: str,
     path: Path | None = None,
     tag: str = 'zero_shot_nllb',
+    max_pairs: int | None = None,
+    n_bootstrap: int = BOOTSTRAP_SAMPLES,
+    seed: int = DEFAULT_SEED,
 ) -> dict:
     path = path or hyp_path_for(suite_name, tag=tag)
     rows = load_existing_hyps(path)
+    if max_pairs is not None:
+        rows = rows[:max_pairs]
     if not rows:
         return {
             'suite': suite_name,
@@ -236,15 +258,28 @@ def score_hyp_file(
             'error': f'missing_hyps:{path}',
             'hypotheses': str(path),
         }
-    scores = score_pairs([r['hyp_hi'] for r in rows], [r['hi_text'] for r in rows])
-    return {
+    scores = score_pairs(
+        [r['hyp_hi'] for r in rows],
+        [r['hi_text'] for r in rows],
+        n_bootstrap=n_bootstrap,
+        seed=seed,
+    )
+    out = {
         'suite': suite_name,
         'path': str(path),
         'n': scores['n'],
         'bleu': scores['bleu'],
         'chrfpp': scores['chrfpp'],
+        'ter': scores['ter'],
+        'len_ratio': scores['len_ratio'],
+        'ref_cleaned': scores['ref_cleaned'],
+        'entities': scores['entities'],
+        'hyp_file_sha256': file_sha256_prefix(path),
         'hypotheses': str(path),
     }
+    if 'confidence' in scores:
+        out['confidence'] = scores['confidence']
+    return out
 
 
 def evaluate_suite(
@@ -262,6 +297,10 @@ def evaluate_suite(
     verbose: bool = True,
     tag: str = 'zero_shot_nllb',
     mbr: dict | None = None,
+    seed: int = DEFAULT_SEED,
+    force_resume: bool = False,
+    fingerprint: dict | None = None,
+    n_bootstrap: int = BOOTSTRAP_SAMPLES,
 ) -> dict:
     pairs = load_jsonl(path)
     if max_pairs is not None:
@@ -275,6 +314,16 @@ def evaluate_suite(
             'n': 0,
             'error': 'empty_or_missing',
         }
+
+    if resume and fingerprint is not None:
+        check_resume_fingerprint(
+            hyp_path_for(suite_name, tag=tag),
+            OUT_DIR / f'{tag}_report.json',
+            fingerprint,
+            force_resume=force_resume,
+            tag=tag,
+            suite=suite_name,
+        )
 
     rows = translate_pairs(
         pairs,
@@ -290,6 +339,7 @@ def evaluate_suite(
         verbose=verbose,
         tag=tag,
         mbr=mbr,
+        seed=seed,
     )
     key_to_hyp = {(r['en_text'], r['hi_text']): r['hyp_hi'] for r in rows}
     hyps, refs, missing = [], [], 0
@@ -300,7 +350,7 @@ def evaluate_suite(
             continue
         hyps.append(key_to_hyp[k])
         refs.append(p['hi_text'])
-    scores = score_pairs(hyps, refs)
+    scores = score_pairs(hyps, refs, n_bootstrap=n_bootstrap, seed=seed)
     out = {
         'suite': suite_name,
         'path': str(path),
@@ -308,14 +358,48 @@ def evaluate_suite(
         'missing_hyps': missing,
         'bleu': scores['bleu'],
         'chrfpp': scores['chrfpp'],
+        'ter': scores['ter'],
+        'len_ratio': scores['len_ratio'],
+        'ref_cleaned': scores['ref_cleaned'],
+        'entities': scores['entities'],
+        'hyp_file_sha256': file_sha256_prefix(hyp_path_for(suite_name, tag=tag)),
         'hypotheses': str(hyp_path_for(suite_name, tag=tag)),
     }
+    if 'confidence' in scores:
+        out['confidence'] = scores['confidence']
     if verbose:
         print(
             f'  BLEU={scores["bleu"]["score"]:.2f}  '
             f'chrF++={scores["chrfpp"]["score"]:.2f}  n={scores["n"]}'
         )
     return out
+
+
+def compare_hyp_files(
+    suite_name: str,
+    path_a: Path,
+    path_b: Path,
+    n_resamples: int = PAIRED_RESAMPLES,
+    seed: int = DEFAULT_SEED,
+) -> dict:
+    """Paired-bootstrap difference CI between two hyp files on one suite.
+
+    Rows are aligned by `en_text`, so the two files need not share row order;
+    pairs missing from either side are skipped."""
+    rows_a = load_existing_hyps(path_a)
+    hyps_b_by_src = {r.get('en_text'): r.get('hyp_hi') for r in load_existing_hyps(path_b)}
+    hyps_a, hyps_b, refs = [], [], []
+    for r in rows_a:
+        if r.get('hyp_hi') is None or r.get('hi_text') is None:
+            continue
+        hyp_b = hyps_b_by_src.get(r.get('en_text'))
+        if hyp_b is None:
+            continue
+        hyps_a.append(r['hyp_hi'])
+        hyps_b.append(hyp_b)
+        refs.append(r['hi_text'])
+    deltas = compare_score_pairs(hyps_a, hyps_b, refs, n_resamples=n_resamples, seed=seed)
+    return {'suite': suite_name, 'n': len(hyps_a), **deltas}
 
 
 def write_report(report: dict, verbose: bool = True) -> Path:
@@ -349,25 +433,54 @@ def run(
     adapters: str | None = None,
     tag: str | None = None,
     mbr: dict | None = None,
+    seed: int = DEFAULT_SEED,
+    force_resume: bool = False,
+    n_bootstrap: int = BOOTSTRAP_SAMPLES,
+    compare_tags: tuple[str, str] | None = None,
 ) -> dict:
     suites = suites or list(DEFAULT_SUITES)
     available = scoring_suites()
     unknown = [s for s in suites if s not in available]
     if unknown:
         raise ValueError(f'unknown suites {unknown}; choose from {list(available)}')
+    if compare_tags is not None and not score_only:
+        raise ValueError('--compare-tags requires --score-only')
     if tag is None:
         tag = 'nllb_lora' if adapters else 'zero_shot_nllb'
         if mbr:
             tag = f'{tag}_mbr{mbr["samples"]}'
 
     if score_only:
+        if compare_tags is not None:
+            if len(compare_tags) != 2:
+                raise ValueError('--compare-tags needs exactly two tags')
+            tag_a, tag_b = compare_tags
+            paired = {
+                n: compare_hyp_files(
+                    n,
+                    hyp_path_for(n, tag=tag_a),
+                    hyp_path_for(n, tag=tag_b),
+                    n_resamples=PAIRED_RESAMPLES,
+                    seed=seed,
+                )
+                for n in suites
+            }
+        else:
+            paired = None
         report = {
             'model_id': model_id,
             'adapters': adapters,
             'tag': tag,
             'mode': 'score_only',
-            'suites': [score_hyp_file(n, tag=tag) for n in suites],
+            'seed': seed,
+            'bootstrap_samples': n_bootstrap,
+            'suites': [
+                score_hyp_file(n, tag=tag, max_pairs=max_pairs, n_bootstrap=n_bootstrap, seed=seed)
+                for n in suites
+            ],
         }
+        if paired is not None:
+            report['confidence'] = {'paired': paired}
         write_report(report, verbose=verbose)
         return report
 
@@ -386,7 +499,25 @@ def run(
             print(f'max_pairs per suite: {max_pairs}')
 
     t_load = time.time()
-    tokenizer, model, device = load_model(model_id, device=device, adapters=adapters)
+    tokenizer, model, device, dtype_name = load_model(model_id, device=device, adapters=adapters)
+    vocab_size = getattr(tokenizer, 'vocab_size', None)
+    if vocab_size is None:
+        try:
+            vocab_size = len(tokenizer)
+        except TypeError:
+            vocab_size = None
+    fingerprint = build_config_fingerprint(
+        model_id,
+        adapters,
+        max_input_length,
+        max_new_tokens,
+        num_beams,
+        vocab_size,
+        device,
+        dtype_name,
+        seed,
+        mbr,
+    )
     if verbose:
         print(f'Loaded in {time.time() - t_load:.1f}s')
 
@@ -408,6 +539,10 @@ def run(
                 verbose=verbose,
                 tag=tag,
                 mbr=mbr,
+                seed=seed,
+                force_resume=force_resume,
+                fingerprint=fingerprint,
+                n_bootstrap=n_bootstrap,
             )
         )
         empty_device_cache(device)
@@ -417,6 +552,11 @@ def run(
         'adapters': adapters,
         'tag': tag,
         'device': device,
+        'decode_dtype': dtype_name,
+        'vocab_size': vocab_size,
+        'seed': seed,
+        'bootstrap_samples': n_bootstrap,
+        'fingerprint': fingerprint,
         'src_lang': SRC_LANG,
         'tgt_lang': TGT_LANG,
         'max_input_length': max_input_length,
@@ -446,6 +586,14 @@ def main():
     p.add_argument('--device', default=None)
     p.add_argument('--adapters', default=None)
     p.add_argument('--tag', default=None)
+    p.add_argument('--seed', type=int, default=DEFAULT_SEED)
+    p.add_argument('--bootstrap', type=int, default=BOOTSTRAP_SAMPLES)
+    p.add_argument('--force-resume', action='store_true')
+    p.add_argument(
+        '--compare-tags',
+        default=None,
+        help='score-only: tag_a,tag_b for a paired-bootstrap difference CI per suite',
+    )
     p.add_argument('--score-only', action='store_true')
     p.add_argument('--no-resume', action='store_true')
     p.add_argument(
@@ -470,6 +618,12 @@ def main():
             'top_p': a.mbr_top_p,
             'utility': a.mbr_utility,
         }
+    compare_tags = None
+    if a.compare_tags:
+        parts = [s.strip() for s in a.compare_tags.split(',') if s.strip()]
+        if len(parts) != 2:
+            p.error('--compare-tags needs exactly two tags')
+        compare_tags = (parts[0], parts[1])
     run(
         model_id=a.model,
         suites=[s.strip() for s in a.suites.split(',') if s.strip()],
@@ -484,6 +638,10 @@ def main():
         adapters=a.adapters,
         tag=a.tag,
         mbr=mbr_cfg,
+        seed=a.seed,
+        force_resume=a.force_resume,
+        n_bootstrap=a.bootstrap,
+        compare_tags=compare_tags,
     )
 
 

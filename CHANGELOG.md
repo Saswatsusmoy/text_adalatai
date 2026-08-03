@@ -2,6 +2,38 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Evaluation harness Phase 4 fixes** (DESIGN §41): harness code + tests only,
+  no re-decode / re-score of real data, no edits to historical score tables.
+  - **COMET cache invalidation** (`comet_score.py`): cache key is now
+    (tag, suite, hyp-file SHA256 prefix, model_id); `comet22_summary.json` is
+    rewritten under `schema: "v2"` and pre-v2 caches are ignored, so a
+    regenerated hyp file under an existing tag is re-scored instead of
+    reporting the stale score.
+  - **Bootstrap CIs** (`metrics_mt.py`): BLEU/chrF++ now report mean + 95% CI
+    via sacreBLEU's built-in bootstrap (`n_bootstrap`, `SACREBLEU_SEED`-seeded);
+    a per-suite `confidence` block is emitted. `paired_ci` /
+    `compare_score_pairs` give a paired-bootstrap difference CI (delta, CI,
+    `significant`) so "DoRA vs A2" / "B' vs A2" verdicts carry intervals;
+    wired as `--compare-tags A,B` in score-only mode.
+  - **Report fingerprints** (`fingerprint.py`, `zero_shot_nllb.py`): reports
+    record model id, adapter path (or `base`), beam, max_in/max_new, tokenizer
+    vocab size, decode device/dtype, seed, and per-suite hyp-file SHA256 prefix.
+    Resume refuses to append rows when the recorded fingerprint differs
+    (`--force-resume` overrides); `--score-only` honors `--max-pairs`.
+  - **Seeded MBR** (`mbr_decode.py`): `set_seed` on the MBR sampling path
+    (default 12345, `--seed`), recorded in every report.
+  - **Length ratio + TER** (`metrics_mt.py`): `len_ratio` (sys_len/ref_len) and
+    sacreBLEU TER per suite so verbosity is visible (I_test hyps ~1.377x ref
+    length with BLEU `bp: 1.0`; chrF++ has no length penalty).
+  - **Ref-cleaned column** (`ref_cleaner.py`): `clean_ref` strips stray danda
+    before punctuation, `#.`/`॥.` and leading bare-digit markers from
+    references only; `ref_cleaned` BLEU/chrF++ is additive and labeled.
+  - **Entity panel** (`entity_panel.py`): legal-entity recall/precision/F1 per
+    suite reusing the tokenizer bench probe lists, case citations and dates,
+    matched across scripts.
+
 ### Fixed
 
 - **Story reflects the Phase 3 training-harness fixes** (DESIGN §40):

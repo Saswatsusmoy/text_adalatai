@@ -1,6 +1,9 @@
 """MBR decoding: sample N candidates, pick argmax mean pairwise chrF utility.
 
 Eikema & Aziz 2020; Freitag et al. 2022.
+
+Phase 4: the sampling path is seeded via `set_seed` so N-sample runs are
+reproducible; the seed is recorded in the eval report.
 """
 
 from __future__ import annotations
@@ -8,13 +11,14 @@ from __future__ import annotations
 import torch
 from sacrebleu.metrics import CHRF
 
-from src.training.common import is_cuda
+from src.training.common import is_cuda, set_seed
 
 
 DEFAULT_UTILITY = 'chrfpp'
 DEFAULT_SAMPLES = 8
 DEFAULT_TEMPERATURE = 1.0
 DEFAULT_TOP_P = 0.9
+DEFAULT_SEED = 12345
 
 _CHRF_METRICS = {
     'chrf': CHRF(word_order=0),
@@ -113,8 +117,15 @@ def translate_batch_mbr(
     temperature: float = DEFAULT_TEMPERATURE,
     top_p: float = DEFAULT_TOP_P,
     utility: str = DEFAULT_UTILITY,
+    seed: int | None = None,
 ) -> list[str]:
-    """Sample + MBR pick for a batch of source strings."""
+    """Sample + MBR pick for a batch of source strings.
+
+    When `seed` is given, the sampler RNG is reset first so a direct call is
+    reproducible; callers that batch many calls should seed once and pass
+    `seed=None` so the RNG advances across batches."""
+    if seed is not None:
+        set_seed(seed)
     batches = sample_candidates(
         texts,
         tokenizer,

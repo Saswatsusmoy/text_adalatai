@@ -35,7 +35,7 @@ hypotheses vs references, one line per pair).
 | File | Content | Status |
 |------|---------|--------|
 | `final_dual_policy_report.json` | Combined dual-policy decision dump (all Track D + C1c systems on I + E) | current |
-| `comet22_summary.json` | COMET-22 (Unbabel/wmt22-comet-da) system-level scores for all shipped hyps | current |
+| `comet22_summary.json` | COMET-22 (Unbabel/wmt22-comet-da) system-level scores for all shipped hyps | current (Phase 4: written under `schema: "v2"`, cache keyed on hyp-file SHA256 prefix + model; pre-v2 cache ignored on next run) |
 | `compare_zero_shot_vs_A1_h200.json` | Pairwise ZS vs A1 diff dump | reference (A1 is a stepping stone; A2 is production, see `nllb600_A1_h200_best_report.json`) |
 
 ## Tokenizer analyses

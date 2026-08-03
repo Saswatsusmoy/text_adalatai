@@ -270,6 +270,46 @@ Tokenizer path (assignment pairs, domain SP 41k vs general baselines): domain SP
 
 MT path (production): stays on **NLLB native tokens** so that pretrained multilingual priors remain intact. Quality gains in the table above are from **LoRA domain adaptation**, not from shrinking the NLLB vocab. Track C tried to combine both; quality did not support shipping it on this budget.
 
+### Phase 4 harness (evaluation hardening, additive only)
+
+This subsection documents harness changes made *after* the score tables above were
+produced. The historical tables are **not** retrofitted; the notes here describe what
+is emitted going forward and why the earlier verdicts were stated without confidence
+intervals. No checkpoint was re-decoded or re-scored to produce this section.
+
+- **Confidence intervals.** Every `*_report.json` written from now on carries a
+  `confidence` block per suite: sacreBLEU's built-in bootstrap (1000 resamples,
+  `SACREBLEU_SEED`-seeded) on the same BLEU/chrF++ result objects, reporting
+  `mean`, `ci_low`, `ci_high` (95%, half-width `ci`). Existing verdicts -- notably
+  "DoRA = equal quality (+/-0.5 chrF++)" and "B' edges A2" -- were made on
+  n=117-3000 with **no CIs** and must be read as point estimates only. A
+  paired-bootstrap difference CI (`--compare-tags A,B` in score-only mode) now
+  reports `delta + 95% CI + significant` for exactly such comparisons.
+- **Report fingerprints.** Reports now record model id, adapter path (or `base`),
+  beam, max_in/max_new, tokenizer vocab size, decode device/dtype, seed, and a
+  SHA256 prefix of each hyp file. Resume refuses to append rows when the pending
+  run's config differs from the recorded fingerprint (`--force-resume` overrides);
+  `--score-only` honors `--max-pairs` (scores the first N rows).
+- **Seed.** MBR sampling is now seeded (default 12345, `--seed`); the seed is
+  recorded in the report so N-sample runs are reproducible.
+- **Verbosity is visible (and unpenalized).** Reports now include `len_ratio`
+  (sys_len / ref_len) and sacreBLEU TER. I_test hyps are ~1.377x reference length
+  with BLEU `bp: 1.0` (no brevity penalty when sys > ref) and chrF++ has no length
+  penalty, so a system emitting ~38% more text scores equal. Length ratio + TER
+  expose this; the primary BLEU/chrF++ semantics are unchanged.
+- **Ref-cleaned column.** `ref_cleaned` reports BLEU/chrF++ computed on references
+  with known OCR/list-marker artifacts stripped (stray danda before punctuation,
+  `#.` / `॥.`, leading bare-digit markers) -- hypotheses and sources untouched,
+  clearly labeled, never replacing the primary columns.
+- **Entity panel.** `entities` reports legal-entity recall/precision/F1 per suite
+  (probes from the tokenizer bench plus case citations such as S.C.R./INSC,
+  Article/section numbers and dates, matched across scripts). This is the only
+  metric that directly answers "did it translate the law correctly".
+- **COMET cache.** `comet22_summary.json` now keys on (tag, suite, hyp-file SHA256
+  prefix, model) under a `schema: v2` header; pre-v2 caches are ignored and a
+  changed hyp file under an existing tag is re-scored instead of reporting the
+  stale score.
+
 ---
 
 ## 5. Qualitative evaluation
