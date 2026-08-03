@@ -227,28 +227,38 @@ Rule: **I_test and E_*_test at most a few times per stage** (best + final), not 
 
 ### 5.3 Primary metric for model selection
 
-Multi-objective, not BLEU-only:
+Multi-objective, not BLEU-only. Implemented in `src/training/selection.py` (Phase 3 fix); the code below is the exact formula.
 
-**Stage A (domain):**
-
-```text
-primary = 0.5 * z(E_milpac_dev chrF++) + 0.3 * z(E_anuvaad_dev_sample chrF++) + 0.2 * z(I_dev chrF++)
-```
-
-Use **chrF++** as lead metric for HI; still log BLEU.  
-`z` = standardize vs running history or vs zero-shot baseline delta.
-
-**Stage B (assignment):**
+**Stage A (domain):** raw weighted mean (unchanged legacy behavior) unless
+`eval.selection.baseline` is configured, which switches to the z-scored rule:
 
 ```text
-primary = 0.7 * I_dev chrF++ + 0.3 * E_milpac_dev chrF++
+primary = 0.5 * E_milpac_dev chrF++ + 0.3 * E_anuvaad_dev_sample chrF++ + 0.2 * I_dev chrF++
 ```
+
+**Stage B (assignment):** z-scored weighted primary with hard caps:
+
+```text
+z_i    = (s_i - mean_i) / std_i         if std_i > 0
+z_i    = s_i - b_i                       else (single-row baseline, delta)
+primary = sum_i(w_i * z_i) / sum_i(w_i)  with w = {I_dev: 0.7, E_milpac_dev: 0.3}
+```
+
+Use **chrF++** as lead metric for HI; still log BLEU. `mean_i`/`std_i` are
+population statistics over all `gen_eval` rows of the baseline run's
+`eval_log.jsonl`; `b_i` is the chrF++ at the baseline run's best-primary row.
+The baseline is the resumed checkpoint's run log (or `eval.selection.baseline`
+for an explicit override); with no baseline the run falls back to the raw
+weighted mean and warns.
 
 Hard constraints (reject checkpoint even if primary high):
 
 1. I_dev chrF++ must not fall > **2.0** absolute below Stage A best (Stage B).
 2. E_milpac_dev chrF++ must not fall > **3.0** below Stage A best (Stage B anti-forgetting).
 3. No NaN loss in last 50 steps.
+
+Caps come from `eval.selection.stage_b_max_drop_<suite>`; a capped-out eval
+counts toward early-stop patience and can never become `best_primary`.
 
 ### 5.4 Overfitting detectors
 

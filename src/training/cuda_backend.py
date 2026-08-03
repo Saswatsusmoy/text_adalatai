@@ -21,6 +21,26 @@ def resolve_dtype(name: str | None, device: str):
     return torch.float32
 
 
+def resolve_compute_dtype(name: str | None, device: str, master_dtype):
+    import torch
+
+    if device == 'mps' and (name or '').lower() in ('fp16', 'float16', 'bf16', 'bfloat16'):
+        return torch.float16
+    return master_dtype
+
+
+def build_grad_scaler(device: str, requested_dtype: str | None):
+    import torch
+
+    name = (requested_dtype or 'float32').lower()
+    if device == 'mps' and name in ('fp16', 'float16', 'bf16', 'bfloat16'):
+        try:
+            return torch.amp.GradScaler('mps')
+        except (TypeError, RuntimeError, ValueError):
+            return None
+    return None
+
+
 def pick_best_cuda_device() -> str | None:
     import torch
 

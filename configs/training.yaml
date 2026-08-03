@@ -69,6 +69,8 @@ optim:
 train:
   batch_size: 1
   grad_accum_steps: 16
+  # local MPS global batch = 1 x 1 x 16 = 16 (H200 configs declare 32)
+  global_batch_size: 16
   # steps are optimizer steps after accumulation
   max_steps_stage_a: 3000
   max_steps_stage_b: 800
@@ -114,6 +116,9 @@ eval:
     # hard constraints (absolute chrF++ points)
     stage_b_max_drop_I_dev: 2.0
     stage_b_max_drop_E_milpac_dev: 3.0
+    # Stage B only: z-scored primary + caps vs resumed checkpoint eval log.
+    # baseline: <path to eval_log.jsonl or report json>  (explicit override)
+    # zscore: true | false  (force on/off; default: on for stage B, off for A)
 
 monitoring:
   log_grad_norm: true

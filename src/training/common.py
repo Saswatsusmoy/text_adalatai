@@ -50,6 +50,11 @@ def move_batch(batch: dict, device: str) -> dict:
 def autocast_ctx(device: str, dtype: torch.dtype):
     if is_cuda(device) and dtype in (torch.float16, torch.bfloat16):
         return torch.autocast(device_type='cuda', dtype=dtype)
+    if device == 'mps' and dtype == torch.float16:
+        try:
+            return torch.autocast(device_type='mps', dtype=torch.float16)
+        except (TypeError, RuntimeError, ValueError):
+            return nullcontext()
     return nullcontext()
 
 

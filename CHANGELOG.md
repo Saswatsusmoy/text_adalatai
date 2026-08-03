@@ -4,6 +4,64 @@
 
 ### Fixed
 
+- **Training harness Phase 3 fixes** (DESIGN §40):
+  - **Anti-forget caps + z-scored Stage B selection now enforced** in code
+    (`src/training/selection.py`). Previously the docs promised caps
+    (`stage_b_max_drop_I_dev: 2.0`, `stage_b_max_drop_E_milpac_dev: 3.0`) and
+    z-scoring but the loop used a raw weighted mean of chrF++ and picked argmax
+    -- the exact gap that let the pure-B run drop E_milpac chrF++ 5.24 with no
+    guardrail.
+  - Exact formula (also in DESIGN §40):
+    `z_i = (s_i - mean_i)/std_i` when `std_i > 0`, else `z_i = s_i - b_i`
+    (delta); `primary = sum_i(w_i * z_i)/sum_i(w_i)`. mean/std are population
+    stats over all `gen_eval` rows of the baseline run's `eval_log.jsonl`;
+    `b_i` is the chrF++ of the baseline run's best-primary row. No baseline
+    available -> raw weighted mean + WARN.
+  - Baseline resolution: `eval.selection.baseline` explicit path, else the
+    resumed checkpoint's run dir `metrics/eval_log.jsonl` (weights taken from
+    that run's `config.snapshot.yaml` so the best row matches how it was
+    picked). JSON report files with a `suites` list also work.
+  - Cap enforcement: candidate is rejected as `best_primary` when any capped
+    suite's drop `b_i - s_i` exceeds its cap; counts toward
+    `bad_evals`/patience. `cap_ok`/`cap_violations`/`z` are logged per gen eval.
+  - Gating (no silent Stage A change): stage A stays raw unless
+    `eval.selection.baseline` is set; stage B defaults to zscore+caps;
+    `eval.selection.zscore: true|false` forces either way.
+  - Tests: `tests/training/test_selection.py` (hand-computed z-scores, cap
+    rejection, baseline-from-resume, gating).
+  - **NaN DDP deadlock fixed**: `sync_nan_stop()` computes the local NaN/Inf
+    flag on every rank and all ranks reach `all_reduce_max` together, so a rank
+    0 NaN no longer breaks while rank 1 keeps training into a hung collective.
+    Unit tests incl. a simulated 2-rank max-reduce.
+  - **Resume safety**: `apply_new_embed_rows(..., required=True)` raises when
+    `new_embed_rows.pt` is missing and `peft.new_embed_start` is configured
+    (was a silent `False`); the new-embed grad mask is reinstalled on the
+    resume path (shared `_install_new_embed_grad_mask`). Tests cover
+    missing-file raise, shape mismatch, and mask zeroing of old rows.
+  - **MPS fp16 GradScaler**: MPS now trains with fp32 master weights + mps
+    autocast (fp16 compute) + `torch.amp.GradScaler('mps')`. Verified on torch
+    2.13: `GradScaler('mps')` constructs but raises "unscale FP16 gradients" on
+    fp16 master weights, so master weights must be fp32. Gated by
+    `build_grad_scaler`; CUDA bf16 path unchanged. `autocast_ctx` now supports
+    mps. Tests incl. a gated MPS scaler training loop.
+  - **Global-batch parity check** (`global_batch_parity`): warns when
+    `batch_size * world * grad_accum_steps != train.global_batch_size`
+    (`strict_global_batch: true` raises). Added `global_batch_size: 16` to the
+    default `configs/training.yaml` so local (16) vs H200 (32) is explicit.
+  - **Train-pool hash verify at launch** (`verify_pool_hashes`): recomputes
+    `file_sha256` prefix for every `*_sha256_prefix` in the data manifest
+    (`source_pool`, `assignment`, `replay_pool`) and warns on drift
+    (`data.strict_source_pool_hash: true` raises). `resolve_train_path` now
+    merges the frozen build's sibling `*_manifest.json` hash keys into the
+    `train_jsonl` override manifest, so the frozen A1/A2/Bp files are actually
+    checked against the current pool at launch (previously the override path
+    carried no hash and nothing was verified).
+  - **Run registry** (`register_run`): writes/updates
+    `{output_root}/runs.json` mapping `run_id -> {run_dir, stage, curriculum,
+    config_snapshot, data_manifest, backend_info, train_log, eval_log,
+    run_summary, best_primary, resume_adapters, start_ts}` so "A2 best" is
+    findable without grep archaeology.
+
 - **Tokenizer tests for all previously-untested modules** (AGENTS.md coverage):
   - `test_matrix_configs.py`: dataclass determinism, name/prefix, opts_tag,
     phase1 (20 configs) / phase2 (5 toggles) presets, `_with` override,

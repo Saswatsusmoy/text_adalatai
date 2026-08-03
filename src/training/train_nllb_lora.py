@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from datetime import datetime, timezone
 from functools import partial
@@ -29,12 +30,14 @@ from src.training.common import (
 )
 from src.training.config import deep_get, load_training_config
 from src.training.cuda_backend import (
+    build_grad_scaler,
     build_optimizer,
     configure_torch_backend,
     dataloader_kwargs,
     gpu_mem_gb,
     maybe_compile,
     pick_best_cuda_device,
+    resolve_compute_dtype,
     resolve_dtype,
     rss_gb,
 )
@@ -48,7 +51,14 @@ from src.training.dist_utils import (
     unwrap_model,
 )
 from src.training.nllb_data import NllbJsonlDataset, collate_nllb
-from src.training.subsample import build_stage_b_replay_mix, build_subsample
+from src.training.selection import (
+    evaluate_selection,
+    load_baseline,
+    parse_caps,
+    selection_mode,
+    weighted_chrfpp_primary,
+)
+from src.training.subsample import build_stage_b_replay_mix, build_subsample, file_sha256
 
 
 NEW_EMBED_ROWS_NAME = 'new_embed_rows.pt'
@@ -199,10 +209,15 @@ def _save_peft(model, path: Path, tokenizer, new_embed_start: int | None = None)
     )
 
 
-def apply_new_embed_rows(model, path: Path | str) -> bool:
+def apply_new_embed_rows(model, path: Path | str, required: bool = False) -> bool:
     path = Path(path)
     f = path / NEW_EMBED_ROWS_NAME if path.is_dir() else path
     if not f.is_file():
+        if required:
+            raise FileNotFoundError(
+                f'{NEW_EMBED_ROWS_NAME} missing in {path}; resume of a vocab-extended '
+                f'model needs the saved emb rows'
+            )
         return False
     payload = torch.load(f, map_location='cpu', weights_only=True)
     start, rows = int(payload['new_embed_start']), payload['rows']
@@ -220,6 +235,21 @@ def apply_new_embed_rows(model, path: Path | str) -> bool:
     return True
 
 
+def _install_new_embed_grad_mask(model, new_embed_start: int) -> bool:
+    emb = model.get_input_embeddings()
+    if emb is None or not hasattr(emb, 'weight'):
+        return False
+    emb.weight.requires_grad = True
+
+    def _mask_old_emb_grad(grad, start=new_embed_start):
+        grad = grad.clone()
+        grad[:start].zero_()
+        return grad
+
+    emb.weight.register_hook(_mask_old_emb_grad)
+    return True
+
+
 def resolve_train_path(
     cfg: dict,
     stage: str,
@@ -231,12 +261,30 @@ def resolve_train_path(
         path = Path(override)
         if not path.exists():
             raise FileNotFoundError(path)
-        return path, {
+        man = {
             'curriculum': curriculum,
             'output': str(path),
             'n': count_nonempty_lines(path),
             'prebuilt': True,
         }
+        sibling = path.with_name(f'{path.stem}_manifest.json')
+        if sibling.is_file():
+            try:
+                with open(sibling, encoding='utf-8') as f:
+                    saved = json.load(f)
+            except (OSError, ValueError):
+                saved = {}
+            for key in (
+                'source_pool',
+                'source_pool_sha256_prefix',
+                'assignment_path',
+                'assignment_sha256_prefix',
+                'replay_pool',
+                'replay_pool_sha256_prefix',
+            ):
+                if key in saved:
+                    man[key] = saved[key]
+        return path, man
     if stage == 'B':
         replay_cfg = deep_get(cfg, 'data', 'stage_b_replay', default={}) or {}
         if curriculum == 'Bp' or replay_cfg.get('enabled'):
@@ -274,6 +322,8 @@ def build_model(cfg: dict, device: str, resume_adapters: str | None = None):
         tokenizer.tgt_lang = tgt_lang
 
     dtype = resolve_dtype(deep_get(cfg, 'model', 'torch_dtype', default='float32'), device)
+    if device == 'mps' and dtype in (torch.float16, torch.bfloat16):
+        dtype = torch.float32  # GradScaler needs fp32 master weights; autocast does fp16 compute
     load_kw = {'dtype': dtype} if dtype != torch.float32 else {}
 
     if is_cuda(device):
@@ -302,8 +352,18 @@ def build_model(cfg: dict, device: str, resume_adapters: str | None = None):
 
     if resume_adapters:
         model = PeftModel.from_pretrained(base, resume_adapters, is_trainable=True)
-        if apply_new_embed_rows(model, resume_adapters) and is_main():
+        new_emb_start = deep_get(cfg, 'peft', 'new_embed_start', default=None)
+        if new_emb_start is not None:
+            new_emb_start = int(new_emb_start)
+        applied = apply_new_embed_rows(model, resume_adapters, required=new_emb_start is not None)
+        if applied and is_main():
             print(f'loaded new_embed_rows from {resume_adapters}')
+        if new_emb_start is not None and is_main():
+            if _install_new_embed_grad_mask(model, new_emb_start):
+                print(
+                    f'new_embed_grad_mask reinstalled on resume: '
+                    f'train emb rows [{new_emb_start}:{model.get_input_embeddings().weight.shape[0]}]'
+                )
         model.to(device)
         return tokenizer, model, device, dtype
 
@@ -321,20 +381,11 @@ def build_model(cfg: dict, device: str, resume_adapters: str | None = None):
     new_emb_start = deep_get(cfg, 'peft', 'new_embed_start', default=None)
     if new_emb_start is not None:
         new_emb_start = int(new_emb_start)
-        emb = model.get_input_embeddings()
-        if emb is not None and hasattr(emb, 'weight'):
-            emb.weight.requires_grad = True
-
-            def _mask_old_emb_grad(grad, start=new_emb_start):
-                grad = grad.clone()
-                grad[:start].zero_()
-                return grad
-
-            emb.weight.register_hook(_mask_old_emb_grad)
-            if is_main():
-                print(
-                    f'new_embed_grad_mask: train emb rows [{new_emb_start}:{emb.weight.shape[0]}]'
-                )
+        if _install_new_embed_grad_mask(model, new_emb_start) and is_main():
+            print(
+                f'new_embed_grad_mask: train emb rows '
+                f'[{new_emb_start}:{model.get_input_embeddings().weight.shape[0]}]'
+            )
 
     model.to(device)
     return tokenizer, model, device, dtype
@@ -394,13 +445,79 @@ def eval_generate(
 
 
 def _primary_chrf(gen: dict, weights: dict) -> float:
-    primary, wsum = 0.0, 0.0
-    for key, w in weights.items():
-        block = gen.get(key)
-        if block and 'chrfpp' in block:
-            primary += float(w) * float(block['chrfpp']['score'])
-            wsum += float(w)
-    return primary / wsum if wsum > 0 else 0.0
+    return weighted_chrfpp_primary(gen, weights)
+
+
+def sync_nan_stop(loss, stop_on_nan: bool, stop_flag: torch.Tensor) -> bool:
+    local = torch.zeros(1, device=stop_flag.device)
+    if stop_on_nan and (torch.isnan(loss).any() or torch.isinf(loss).any()):
+        local.fill_(1)
+    all_reduce_max(local)
+    stopped = local.item() > 0
+    if stopped:
+        stop_flag.fill_(1)
+    return stopped
+
+
+def global_batch_parity(
+    batch_size: int, world: int, accum: int, target: int | None
+) -> tuple[int, bool]:
+    actual = batch_size * world * accum
+    if target is None:
+        return actual, True
+    return actual, actual == int(target)
+
+
+def _manifest_path_key(manifest: dict, base: str) -> str | None:
+    for cand in (base, f'{base}_path', f'{base}_pool'):
+        if manifest.get(cand):
+            return cand
+    return None
+
+
+def verify_pool_hashes(cfg: dict, data_manifest: dict | None) -> list[dict]:
+    checks = []
+    if not data_manifest:
+        return checks
+    for key in sorted(data_manifest):
+        if not key.endswith('_sha256_prefix'):
+            continue
+        base = key[: -len('_sha256_prefix')]
+        path_key = _manifest_path_key(data_manifest, base)
+        p_raw = data_manifest.get(path_key) if path_key else None
+        if not p_raw:
+            p_raw = deep_get(cfg, 'data', 'stage_a_train')
+        if not p_raw:
+            continue
+        p = Path(p_raw)
+        if not p.exists():
+            continue
+        current = file_sha256(p)
+        checks.append(
+            {
+                'key': key,
+                'path': str(p),
+                'manifest_prefix': data_manifest[key],
+                'current_prefix': current,
+                'ok': current == data_manifest[key],
+            }
+        )
+    return checks
+
+
+def register_run(output_root: Path, run_id: str, entry: dict) -> Path:
+    output_root = Path(output_root)
+    reg = output_root / 'runs.json'
+    db = {}
+    if reg.exists():
+        try:
+            db = json.loads(reg.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            db = {}
+    db[run_id] = entry
+    output_root.mkdir(parents=True, exist_ok=True)
+    reg.write_text(json.dumps(db, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+    return reg
 
 
 def run(
@@ -468,6 +585,24 @@ def run(
                 str(resume_adapters) + '\n',
                 encoding='utf-8',
             )
+        register_run(
+            deep_get(cfg, 'run', 'output_root', default='data/runs'),
+            run_id,
+            {
+                'run_dir': str(run_dir),
+                'stage': stage,
+                'curriculum': curriculum,
+                'start_ts': ts,
+                'config_snapshot': str(run_dir / 'config.snapshot.yaml'),
+                'data_manifest': str(run_dir / 'data_manifest.json'),
+                'backend_info': str(run_dir / 'backend_info.json'),
+                'train_log': str(metrics_dir / 'train_log.jsonl'),
+                'eval_log': str(metrics_dir / 'eval_log.jsonl'),
+                'run_summary': str(run_dir / 'run_summary.json'),
+                'best_primary': str(ckpt_dir / 'best_primary'),
+                'resume_adapters': resume_adapters,
+            },
+        )
     barrier()
 
     if verbose:
@@ -483,11 +618,28 @@ def run(
                 f'sdpa={backend_info["sdpa"]} sdp={backend_info.get("sdp_backends")}'
             )
 
+    hash_checks = verify_pool_hashes(cfg, data_manifest)
+    strict_hash = bool(deep_get(cfg, 'data', 'strict_source_pool_hash', default=False))
+    for check in hash_checks:
+        if check['ok']:
+            continue
+        msg = (
+            f'{check["key"]} drift: manifest {check["manifest_prefix"]} != '
+            f'current {check["current_prefix"]} for {check["path"]}'
+        )
+        if strict_hash:
+            raise RuntimeError(msg)
+        if verbose:
+            print(f'WARN {msg}')
+
     tokenizer, model, device, dtype = build_model(
         cfg,
         device,
         resume_adapters=resume_adapters,
     )
+    requested_dtype = deep_get(cfg, 'model', 'torch_dtype', default='float32')
+    compute_dtype = resolve_compute_dtype(requested_dtype, device, dtype)
+    scaler = build_grad_scaler(device, requested_dtype)
 
     # torch.compile + DDP hangs on NLLB/PEFT (Dynamo/NCCL)
     compile_on = bool(deep_get(cfg, 'train', 'torch_compile', default=False))
@@ -517,7 +669,12 @@ def run(
         )
 
     if verbose:
-        print(f'dtype={dtype} torch_compile={compiled} ddp={dist_info["enabled"]}')
+        print(
+            f'dtype={dtype} compute_dtype={compute_dtype} '
+            f'torch_compile={compiled} ddp={dist_info["enabled"]}'
+        )
+        if scaler is not None:
+            print('grad_scaler=mps fp16')
         raw = unwrap_model(model)
         if hasattr(raw, 'print_trainable_parameters'):
             raw.print_trainable_parameters()
@@ -629,6 +786,21 @@ def run(
     optimizer = build_optimizer(params, lr, betas, weight_decay, device)
 
     accum = int(deep_get(cfg, 'train', 'grad_accum_steps', default=16))
+    global_batch, gb_ok = global_batch_parity(
+        batch_size,
+        world,
+        accum,
+        deep_get(cfg, 'train', 'global_batch_size', default=None),
+    )
+    if not gb_ok:
+        msg = (
+            f'global batch mismatch: {batch_size}*{world}*{accum}={global_batch} '
+            f'!= global_batch_size={deep_get(cfg, "train", "global_batch_size")}'
+        )
+        if bool(deep_get(cfg, 'train', 'strict_global_batch', default=False)):
+            raise AssertionError(msg)
+        if verbose:
+            print(f'WARN {msg}')
     default_max = int(
         deep_get(
             cfg,
@@ -678,8 +850,18 @@ def run(
     if sampler is not None:
         sampler.set_epoch(epoch)
     data_iter = iter(train_loader)
-    global_batch = batch_size * world * accum
     stop_flag = torch.zeros(1, device=device if is_cuda(device) else 'cpu')
+
+    sel_mode = selection_mode(cfg, stage)
+    selection_caps = parse_caps(deep_get(cfg, 'eval', 'selection', default={}) or {})
+    baseline = None
+    if sel_mode == 'zscore':
+        baseline = load_baseline(cfg, stage, resume_adapters)
+        if baseline is None and verbose:
+            print(
+                'WARN z-score selection requested but no baseline eval log found; '
+                'using raw weighted primary'
+            )
 
     if verbose:
         print(
@@ -702,10 +884,10 @@ def run(
             batch = next(data_iter)
 
         batch = move_batch(batch, device)
-        with autocast_ctx(device, dtype):
+        with autocast_ctx(device, compute_dtype):
             out = model(**batch)
             loss = out.loss / accum
-        if stop_on_nan and (torch.isnan(loss) or torch.isinf(loss)):
+        if sync_nan_stop(loss, stop_on_nan, stop_flag):
             if main:
                 append_jsonl(
                     train_log,
@@ -716,18 +898,25 @@ def run(
                     },
                 )
                 print(f'NaN/Inf loss at step {global_step}; stopping')
-            stop_flag.fill_(1)
-            all_reduce_max(stop_flag)
             break
-        loss.backward()
+        if scaler is not None:
+            scaler.scale(loss).backward()
+        else:
+            loss.backward()
         running_loss += loss_value(loss)
         micro += 1
         del batch, out
         if micro % accum != 0:
             continue
 
+        if scaler is not None:
+            scaler.unscale_(optimizer)
         grad_norm = torch.nn.utils.clip_grad_norm_(params, max_grad_norm)
-        optimizer.step()
+        if scaler is not None:
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            optimizer.step()
         scheduler.step()
         optimizer.zero_grad(set_to_none=True)
         global_step += 1
@@ -819,18 +1008,35 @@ def run(
                 )
             wkey = 'stage_b_weights' if stage == 'B' else 'stage_a_weights'
             weights = deep_get(cfg, 'eval', 'selection', wkey, default={}) or {}
-            primary = _primary_chrf(gen, weights)
+            sel = evaluate_selection(
+                gen,
+                weights,
+                baseline if sel_mode == 'zscore' else None,
+                selection_caps if sel_mode == 'zscore' else {},
+            )
+            primary = sel['primary']
             gen['primary_chrfpp'] = round(primary, 4)
+            gen['selection'] = {
+                'mode': sel['mode'],
+                'cap_ok': sel['cap_ok'],
+                'cap_violations': sel['cap_violations'],
+                'z': sel['z'],
+            }
             append_jsonl(eval_log, gen)
             if verbose:
-                print(f'  gen_eval primary_chrfpp={gen["primary_chrfpp"]}')
+                print(
+                    f'  gen_eval primary_chrfpp={gen["primary_chrfpp"]} '
+                    f'mode={sel["mode"]} cap_ok={sel["cap_ok"]}'
+                )
+                if sel['cap_violations']:
+                    print(f'    cap violations: {sel["cap_violations"]}')
                 for k in ('I_dev', 'E_milpac_dev', 'E_anuvaad_dev_sample'):
                     if k in gen and 'chrfpp' in gen[k]:
                         print(
                             f'    {k}: BLEU={gen[k]["bleu"]["score"]:.2f} '
                             f'chrF++={gen[k]["chrfpp"]["score"]:.2f}'
                         )
-            if primary > best_primary:
+            if sel['cap_ok'] and primary > best_primary:
                 best_primary, best_step, bad_evals = primary, global_step, 0
                 best_dir = ckpt_dir / 'best_primary'
                 _save_peft(model, best_dir, tokenizer, new_embed_start=new_embed_start)
@@ -869,6 +1075,10 @@ def run(
             'device': device,
             'world_size': world,
             'dtype': str(dtype).replace('torch.', ''),
+            'compute_dtype': str(compute_dtype).replace('torch.', ''),
+            'grad_scaler': scaler is not None,
+            'selection_mode': sel_mode,
+            'baseline': baseline,
             'torch_compile': compiled,
             'batch_size_per_device': batch_size,
             'global_batch': global_batch,

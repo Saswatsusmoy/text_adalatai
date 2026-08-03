@@ -1,13 +1,17 @@
 """Unit tests for CUDA/Hopper helpers (run on CPU/MPS without GPU)."""
 
+from contextlib import nullcontext
 from pathlib import Path
 
+import pytest
 import torch
 
 from src.training.cuda_backend import (
+    build_grad_scaler,
     build_optimizer,
     configure_torch_backend,
     dataloader_kwargs,
+    resolve_compute_dtype,
     resolve_dtype,
     rss_gb,
 )
@@ -23,6 +27,50 @@ def test_resolve_dtype_float32_on_cpu():
 def test_resolve_dtype_names():
     d = resolve_dtype('fp16', 'mps')
     assert d in (torch.float16, torch.float32)
+
+
+def test_resolve_compute_dtype_mps_low_precision_is_fp16():
+    assert resolve_compute_dtype('float16', 'mps', torch.float32) == torch.float16
+    assert resolve_compute_dtype('bfloat16', 'mps', torch.float32) == torch.float16
+    assert resolve_compute_dtype('float32', 'mps', torch.float32) == torch.float32
+    assert resolve_compute_dtype('float16', 'cpu', torch.float32) == torch.float32
+
+
+def test_build_grad_scaler_only_for_mps_low_precision():
+    if torch.backends.mps.is_available():
+        scaler = build_grad_scaler('mps', 'float16')
+        assert scaler is not None
+        assert hasattr(scaler, 'scale')
+    assert build_grad_scaler('mps', 'float32') is None
+    assert build_grad_scaler('cpu', 'float16') is None
+    assert build_grad_scaler('cuda', 'float16') is None
+
+
+def test_autocast_ctx_mps_fp16_enabled():
+    from src.training.common import autocast_ctx
+
+    assert not isinstance(autocast_ctx('mps', torch.float16), nullcontext)
+    assert isinstance(autocast_ctx('mps', torch.float32), nullcontext)
+    assert isinstance(autocast_ctx('cpu', torch.float16), nullcontext)
+
+
+@pytest.mark.skipif(not torch.backends.mps.is_available(), reason='requires MPS')
+def test_grad_scaler_mps_fp32_master_loop():
+    dev = 'mps'
+    m = torch.nn.Linear(8, 8).to(dev)
+    opt = torch.optim.AdamW(m.parameters(), lr=1e-3)
+    scaler = build_grad_scaler(dev, 'float16')
+    assert scaler is not None
+    for _ in range(3):
+        opt.zero_grad(set_to_none=True)
+        with torch.autocast('mps', dtype=torch.float16):
+            loss = m(torch.randn(4, 8, device=dev)).abs().mean()
+        scaler.scale(loss).backward()
+        scaler.unscale_(opt)
+        torch.nn.utils.clip_grad_norm_(m.parameters(), 1.0)
+        scaler.step(opt)
+        scaler.update()
+    assert scaler.get_scale() >= 1.0
 
 
 def test_configure_backend_cpu_is_noop():
