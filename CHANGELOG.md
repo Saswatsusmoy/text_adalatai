@@ -4,6 +4,18 @@
 
 ### Fixed
 
+- **Story reflects the Phase 3 training-harness fixes** (DESIGN §40):
+  - `track-d.html`: new "Selection harness" section -- before/after table (raw
+    weighted mean vs z-scored + caps, NaN deadlock, resume safety, MPS scaler,
+    batch parity, pool hashes, run registry), exact formula, verified cap
+    rejection callout; ops notes extended for MPS/scaler + selection logging.
+  - `failures.html`: new entries (caps never enforced, NaN DDP deadlock, MPS
+    fp16 no scaling, silent embed-row resume) + learned lesson on selection.
+  - `dual-eval.html`: anti-forget bar now described as trainer-enforced.
+  - `interview.html`: Q&A on how checkpoint selection works now (z-score + caps).
+  - `artifacts.html`: `selection.py` module + `runs.json` registry.
+  - `index.html`: Track D card tagline mentions z-scored anti-forget selection.
+
 - **Training harness Phase 3 fixes** (DESIGN §40):
   - **Anti-forget caps + z-scored Stage B selection now enforced** in code
     (`src/training/selection.py`). Previously the docs promised caps

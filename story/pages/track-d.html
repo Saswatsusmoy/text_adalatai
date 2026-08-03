@@ -117,6 +117,86 @@
       but dual-policy production remains A2.
     </p>
 
+    <h2>4b. Selection harness -- anti-forget caps + z-scored primary (Phase 3 fix)</h2>
+    <p>
+      A deep-read of the training loop against the strategy doc found the code did <strong>not</strong>
+      enforce what the docs promised. The docs specified a z-standardized multi-suite primary and hard
+      anti-forget caps; the loop computed a <strong>raw weighted mean</strong> of chrF++ and picked
+      argmax. That is exactly why the pure-B run's E_milpac drop (5.24 vs the 2.0 cap) was only caught
+      by post-hoc analysis, never by the trainer.
+    </p>
+    <p><strong>What changed (harness code + tests + docs; no retrain):</strong></p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Guarantee</th><th>Before</th><th>After (Phase 3)</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Checkpoint selection</td>
+            <td>raw weighted mean, argmax</td>
+            <td>z-scored weighted primary (Stage B) + hard caps; stage A unchanged unless opted in</td>
+          </tr>
+          <tr>
+            <td>Anti-forget caps</td>
+            <td>only in YAML, never enforced</td>
+            <td><code>stage_b_max_drop_&lt;suite&gt;</code> enforced; capped-out eval never becomes <code>best_primary</code> and counts toward early-stop patience</td>
+          </tr>
+          <tr>
+            <td>NaN handling (DDP)</td>
+            <td>rank 0 broke alone, rank 1 kept training &rarr; NCCL deadlock</td>
+            <td>all ranks hit the collective (<code>sync_nan_stop</code>) before stopping</td>
+          </tr>
+          <tr>
+            <td>Resume of vocab-extended model</td>
+            <td>missing <code>new_embed_rows.pt</code> silently reverted emb rows</td>
+            <td>raises when required; grad mask reinstalled on resume</td>
+          </tr>
+          <tr>
+            <td>MPS fp16 training</td>
+            <td>raw fp16, no scaling (numerics risk)</td>
+            <td>fp32 master weights + mps autocast + <code>GradScaler('mps')</code></td>
+          </tr>
+          <tr>
+            <td>MPS vs H200 batch parity</td>
+            <td>implicit 16 vs 32, unverified</td>
+            <td>explicit <code>global_batch_size</code> + warn/raise on mismatch</td>
+          </tr>
+          <tr>
+            <td>Frozen subsample integrity</td>
+            <td>no check that pool matches the manifest</td>
+            <td><code>file_sha256</code> prefix verified at launch (warn/raise)</td>
+          </tr>
+          <tr>
+            <td>Run provenance</td>
+            <td>"A2 best" found by grep over run dirs</td>
+            <td><code>{output_root}/runs.json</code> registry: run_id &rarr; config, data, logs, best checkpoint</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p><strong>Exact selection formula</strong> (documented in <code>src/training/selection.py</code>,
+      TRAINING_STRATEGY &sect;5.3, DESIGN_DECISIONS &sect;40):</p>
+    <pre class="codeblock">z_i   = (s_i - mean_i) / std_i        if std_i &gt; 0
+z_i   = s_i - b_i                      else (single-row baseline: delta)
+primary = sum_i(w_i * z_i) / sum_i(w_i)
+# Stage B weights: I_dev 0.7, E_milpac 0.3; caps: I_dev 2.0, E_milpac 3.0
+# mean/std = population stats over all gen_eval rows of the baseline run's eval log
+# b_i = chrF++ at the baseline run's best-primary row</pre>
+    <p>
+      <strong>Why z-score + caps, not just weights:</strong> the suites live on different scales
+      (I_dev ~49 chrF++, E_milpac ~56, E_anuvaad ~64). A raw weighted mean silently rewards
+      whichever suite has the highest absolute score, so the intended 0.7/0.3 balance is not what
+      the loop optimized. Z-scoring makes the weights mean what they say, and the hard caps are the
+      anti-forget guardrail that a raw argmax ignores.
+    </p>
+    <div class="callout warn">
+      <div class="label">Cap rejection is verified, not theoretical</div>
+      <p>
+        Independent check on realistic values: a checkpoint with I_dev rising (primary 5.4) but
+        E_milpac dropping 5.46 is <strong>rejected</strong> (<code>cap_ok: False</code>) even though
+        its primary is high. This is the exact pure-B failure mode the old loop would have shipped.
+      </p>
+    </div>
+
     <h2>5. DoRA ablation on A2 data</h2>
     <p>
       Weight-decomposed LoRA on the same A2 150k subsample, from base
@@ -143,11 +223,17 @@
       Report: <code>data/analysis/nllb600_A2_dora_h200_best_report.json</code>. DESIGN_DECISIONS &sect;28.
     </p>
 
-    <h2>Ops notes (H200)</h2>
+    <h2>Ops notes (H200 + local)</h2>
     <ul>
       <li><code>torch.compile</code> disabled under DDP (NCCL hang after first loss_eval).</li>
       <li>bf16 + Flash/mem-efficient SDPA; fused AdamW when available.</li>
       <li>Same data / LoRA surface / steps as local; dual GPU only changes wall clock.</li>
+      <li>MPS (local): fp32 master weights + mps autocast + <code>GradScaler('mps')</code>; verified
+        on torch 2.13 that the scaler needs fp32 masters (it rejects fp16 gradients).</li>
+      <li>Selection logging: every gen eval row now records <code>selection.mode</code>,
+        <code>cap_ok</code>, <code>cap_violations</code>, and per-suite <code>z</code> for archaeology.</li>
+      <li>Runs register into <code>data/runs/runs.json</code> at launch (config snapshot, data
+        manifest, eval/train logs, best checkpoint path).</li>
     </ul>
   </div>
   <script src="../js/site.js"></script>

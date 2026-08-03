@@ -56,13 +56,17 @@ E_anuvaad_test BLEU / chrF++</pre>
     <h2>Selection and anti-forget</h2>
     <p>
       During training, checkpoints are ranked with a weighted primary score on dev suites
-      (chrF++). Stage B additionally has a hard anti-forget bar versus A2:
+      (chrF++). Since the Phase 3 harness fix, Stage B uses a <strong>z-scored</strong> primary
+      (weights mean what they say across differently-scaled suites) plus <strong>hard caps
+      enforced in the loop</strong> (see <a href="track-d.html">Track D</a>):
     </p>
     <div class="callout fail">
-      <div class="label">Stage B anti-forget bar</div>
+      <div class="label">Stage B anti-forget bar (now enforced by the trainer)</div>
       <p>
         E_milpac chrF++ drop must be &lt;= 2.0 vs A2. Pure Stage B dropped ~5.24 -- fail.
         B' with 10% A2 replay recovered most of E but still did not beat A2 dual-policy.
+        A checkpoint that violates the cap can no longer become <code>best_primary</code>;
+        it is rejected and counts toward early-stop patience.
       </p>
     </div>
 

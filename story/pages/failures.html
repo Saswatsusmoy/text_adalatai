@@ -68,6 +68,26 @@
             <td>Ablation only; ship A2</td>
           </tr>
           <tr>
+            <td>Selection caps never enforced</td>
+            <td>Loop used a raw weighted mean and argmax; the anti-forget caps in YAML were never read, so a future Stage B would silently overfit E again (the -5.24 was caught only post-hoc)</td>
+            <td>Z-scored primary + hard caps enforced in <code>selection.py</code>; capped-out evals rejected</td>
+          </tr>
+          <tr>
+            <td>NaN DDP deadlock</td>
+            <td>Rank 0 NaN broke alone while rank 1 kept training into a hung collective</td>
+            <td><code>sync_nan_stop</code>: all ranks hit the MAX before stopping</td>
+          </tr>
+          <tr>
+            <td>MPS fp16 no scaling</td>
+            <td>Raw fp16 forward/backward on 600M (underflow/overflow risk)</td>
+            <td>fp32 masters + mps autocast + <code>GradScaler('mps')</code></td>
+          </tr>
+          <tr>
+            <td>Silent embed-row resume</td>
+            <td>Missing <code>new_embed_rows.pt</code> quietly reverted extended rows</td>
+            <td>Raise when <code>new_embed_start</code> configured; grad mask reinstalled</td>
+          </tr>
+          <tr>
             <td>C1c bulk +8k tokens</td>
             <td>I chrF 24.9; breaks good NLLB singles</td>
             <td>Ablation</td>
@@ -98,6 +118,7 @@
       <li>Tokenizer packing and MT quality are different objectives; do not conflate them.</li>
       <li>Checkpoint what you actually train (embedding rows outside PEFT adapters).</li>
       <li>Make data-quality invariants a code-enforced gate, and keep tests from writing into the real data tree.</li>
+      <li>Selection metrics need z-scoring + hard anti-forget caps, enforced in the loop -- a raw weighted mean of differently-scaled suites optimizes the wrong thing, and a YAML-only cap is no guardrail.</li>
     </ul>
   </div>
   <script src="../js/site.js"></script>

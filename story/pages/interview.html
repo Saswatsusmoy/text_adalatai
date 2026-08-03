@@ -67,7 +67,20 @@
     <h3>Why is Stage B not production?</h3>
     <p>
       I BLEU rose but external legal chrF collapsed (MILPaC drop ~5.2). Dual policy exists exactly
-      to catch that. Prefer A2 or a replay Stage B' if specializing further.
+      to catch that. Prefer A2 or a replay Stage B' if specializing further. A Phase 3 harness fix
+      now makes that guardrail automatic: the trainer z-scores the primary and enforces the
+      anti-forget caps, so a future Stage B overfit is rejected at checkpoint-selection time, not
+      caught afterward.
+    </p>
+
+    <h3>How does checkpoint selection actually work now?</h3>
+    <p>
+      Stage B uses a <strong>z-scored weighted primary</strong> with hard caps instead of a raw
+      weighted mean. Because I_dev (~49), E_milpac (~56), and E_anuvaad (~64) live on different
+      scales, a raw mean silently optimizes the highest-absolute-score suite; z-scoring makes the
+      0.7/0.3 weights mean what they say. Caps reject a checkpoint when any suite drops more than
+      its limit -- verified: an I-rising checkpoint with E_milpac -5.46 is rejected. Full details on
+      the <a href="track-d.html">Track D</a> page and DESIGN_DECISIONS &sect;40.
     </p>
 
     <h3>Was vocab extend a waste?</h3>

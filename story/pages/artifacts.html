@@ -32,7 +32,7 @@
         <tbody>
           <tr><td><code>src/preprocessing/</code></td><td>reextract, join, segment, align, output, ingest, split_external_eval</td></tr>
           <tr><td><code>src/tokenizer/</code></td><td>benchmark, deep_dive, train, train_v2, train_full_joint, prepare_spm_corpus</td></tr>
-          <tr><td><code>src/training/</code></td><td>train_nllb_lora, subsample, vocab_extend_nllb(_v2), legal_mt_*, cuda_backend, dist_utils</td></tr>
+          <tr><td><code>src/training/</code></td><td>train_nllb_lora, selection (z-score + caps), subsample, vocab_extend_nllb(_v2), legal_mt_*, cuda_backend, dist_utils</td></tr>
           <tr><td><code>src/evaluation/</code></td><td>metrics_mt, eval_sets, zero_shot_nllb, eval_legal_mt</td></tr>
           <tr><td><code>src/utils/</code></td><td>jsonl, validation, profile_hardware</td></tr>
           <tr><td><code>configs/</code></td><td>preprocessing.yaml, training*.yaml, training_h200*.yaml, training_c1*.yaml</td></tr>
@@ -53,6 +53,7 @@
           <tr><td><code>data/models/tokenizers/sentencepiece_legal_v2_joint_full_41000.model</code></td><td>Track C0 freeze</td></tr>
           <tr><td><code>data/models/nllb600_c1c_sp_ext{,_v2}/</code></td><td>C1c extended bases</td></tr>
           <tr><td><code>data/runs/...A2.../best_primary</code></td><td>Production LoRA adapters</td></tr>
+          <tr><td><code>data/runs/runs.json</code></td><td>Run registry: run_id &rarr; config snapshot, data manifest, logs, best checkpoint</td></tr>
           <tr><td><code>data/analysis/*_report.json</code></td><td>System scores</td></tr>
           <tr><td><code>data/analysis/*_hyps.jsonl</code></td><td>Decoded hypotheses</td></tr>
           <tr><td><code>data/analysis/final_dual_policy_report.json</code></td><td>Closed dual-policy dump</td></tr>
