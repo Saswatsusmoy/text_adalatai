@@ -44,6 +44,18 @@
       negative transfer of careless vocab extend.
     </p>
 
+    <h2>Why NLLB + LoRA, not a small LLM</h2>
+    <ul>
+      <li><strong>Task shape:</strong> sentence-level legal MT is encoder-decoder territory; an LLM
+        needs extra scaffolding (prompting, decoding, licensing) for the same job.</li>
+      <li><strong>Efficiency:</strong> LoRA on NLLB-600M is ~0.5% trainable params, single-GPU / MPS
+        friendly, and resumes cleanly between curriculum stages.</li>
+      <li><strong>Prior quality:</strong> NLLB's multilingual pretraining already gives strong
+        EN-HI; adaptation is a small correction, not a rebuild.</li>
+      <li><strong>Dual-track fairness:</strong> both tracks share frozen assignment splits + the same
+        dual-policy tests, so the head-to-head is apples-to-apples.</li>
+    </ul>
+
     <h2>Execution order (actual)</h2>
     <ol>
       <li>Freeze data contract (doc IDs, dual policies).</li>
@@ -56,6 +68,21 @@
       <li>Report + this walkthrough.</li>
     </ol>
 
+    <h2>What actually happened (outcomes)</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Step</th><th>Outcome</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>Zero-shot NLLB</td><td>I 18.85/44.74, E_milpac 34.28/55.22, E_anuvaad 39.39/60.08</td><td>Strong multilingual prior; legal register gaps remain.</td></tr>
+          <tr><td>D A1 LoRA</td><td>I 21.67/49.16 (vs ZS +4.42 chrF++)</td><td>Domain legal register improves without full fine-tune.</td></tr>
+          <tr><td>D A2 LoRA (<strong>ship</strong>)</td><td>I 21.86/49.66, E_milpac 34.90/56.46, E_anuvaad 45.80/64.83</td><td>Best dual-policy point; resume A1 at lower LR on 150k.</td></tr>
+          <tr><td>Stage B (assignment only)</td><td>I BLEU up, E_milpac chrF <strong>-5.24</strong></td><td>Overfits I, forgets external legal -- the case for dual policy + enforced caps.</td></tr>
+          <tr><td>B' replay</td><td>E_milpac -1.62 (passes bar) but not &gt; A2</td><td>Replay recovers E; method works, production still A2.</td></tr>
+          <tr><td>C1c v2 careful extend</td><td>Below zero-shot on all suites</td><td>+1500 legal tokens + A1 LoRA didn't beat stock NLLB priors.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
     <h2>LoRA defaults (Track D)</h2>
     <div class="table-wrap">
       <table>
@@ -64,7 +91,8 @@
           <tr><td>Base</td><td>nllb-200-distilled-600M</td><td>Strong EN-HI prior; 600M is single-GPU friendly with LoRA</td></tr>
           <tr><td>Profile</td><td>decoder_attn (self + cross attn)</td><td>Cross-attn is MT hinge; ~0.5% params</td></tr>
           <tr><td>Rank / alpha</td><td>r=16, alpha=32</td><td>Stable PEFT default for this size</td></tr>
-          <tr><td>Selection</td><td>weighted dev chrF++ dual policy</td><td>Not train loss alone</td></tr>
+          <tr><td>Selection</td><td>weighted dev chrF++ dual policy, z-scored + caps for Stage B</td><td>Not train loss alone; caps are now enforced in the loop</td></tr>
+          <tr><td>Curriculum</td><td>smoke -&gt; A1 (80k) -&gt; A2 (150k)</td><td>Small curated Stage A first, then scale resume</td></tr>
         </tbody>
       </table>
     </div>

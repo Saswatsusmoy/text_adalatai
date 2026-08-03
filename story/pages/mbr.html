@@ -25,6 +25,7 @@
           <tr><td>Sampling</td><td><code>do_sample=True, num_beams=1, num_return_sequences=N</code> in one <code>generate</code></td></tr>
           <tr><td>Utility</td><td>Sentence chrF++ (word_order=2); chrF (word_order=0) selectable</td></tr>
           <tr><td>Default N</td><td>8</td></tr>
+          <tr><td>Seed</td><td>12345 default (<code>--seed</code>); sampling is seeded so N-sample runs are reproducible (Phase 4)</td></tr>
           <tr><td>Tag</td><td>Auto-appends <code>_mbr{N}</code> when <code>--tag</code> omitted (no beam4 clobber)</td></tr>
           <tr><td>Make</td><td><code>eval-mbr-a2</code>, <code>eval-mbr-zs</code>, <code>eval-mbr-smoke</code></td></tr>
         </tbody>
@@ -73,7 +74,9 @@
       <p>
         At N=8, top_p=0.9, T=1.0, chrF++ utility, MBR does not help. Beam4 stays shipped.
         The confound is decode strategy, not device or precision. Negative result stands
-        only at the tried configuration.
+        only at the tried configuration. Phase 4 caveat: these deltas are point estimates
+        (the MBR-vs-beam4 differences were not run through a paired CI); the two systems
+        share the same source set, so a paired difference CI is the right follow-up tool.
       </p>
     </div>
 

@@ -48,7 +48,18 @@ make tokenizer-bench</pre>
     <pre class="codeblock">make zero-shot-nllb
 PYTHONPATH=. python -m src.evaluation.zero_shot_nllb \
   --adapters data/runs/.../checkpoints/best_primary \
-  --tag A2_best</pre>
+  --tag A2_best
+
+# Phase 4 harness extras:
+# --score-only honors --max-pairs; reports carry CIs + fingerprints
+PYTHONPATH=. python -m src.evaluation.zero_shot_nllb \
+  --score-only --max-pairs 190 --tag A2_best
+# paired-bootstrap difference CI between two systems on a suite
+PYTHONPATH=. python -m src.evaluation.zero_shot_nllb \
+  --score-only --compare-tags A2_best,B_best
+# COMET-22 over all *_hyps.jsonl (cache keyed on hyp-file SHA256 + model)
+make comet-score
+# legal-entity panel is emitted inside every *_report.json ('entities' block)</pre>
 
     <h2>Orchestrator</h2>
     <pre class="codeblock">python run_pipeline.py --list

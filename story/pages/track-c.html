@@ -77,7 +77,15 @@
       <strong>Checkpoint bug found:</strong> with <code>modules_to_save=null</code>, PEFT saved
       LoRA only (~12MB) and dropped trained emb rows. Fix: write
       <code>new_embed_rows.pt</code> and apply on load/eval. Retrain required before scoring.
+      Phase 3 hardening: resume now raises if <code>new_embed_rows.pt</code> is missing while
+      <code>peft.new_embed_start</code> is configured, and reinstalls the new-embed grad mask
+      (previously a silent revert to init).
     </p>
+    <p><strong>Why it still lost:</strong> the careful method is sound, but +1500 mean-initialized
+      legal tokens + a single A1 LoRA budget did not beat stock NLLB priors. Mean-init puts new rows
+      on a different energy scale than the trained geometry, and 3000 A1 steps is not enough
+      embedding warm-up. The vocab change also perturbs NLLB's shared multilingual embedding space
+      more than the added legal atoms help -- hence below zero-shot on all three suites.</p>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Suite</th><th>BLEU</th><th>chrF++</th><th>vs ZS</th><th>vs A2 chrF</th></tr></thead>

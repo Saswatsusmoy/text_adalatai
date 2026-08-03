@@ -15,6 +15,12 @@
       Full hyps: <code>data/analysis/zero_shot_nllb_I_test_hyps.jsonl</code>,
       <code>nllb600_A2_h200_best_I_test_hyps.jsonl</code>.
     </p>
+    <p>
+      Phase 4 makes part of this quantitative: the <strong>entity panel</strong> now reports
+      per-suite legal-entity recall/precision/F1 (probes + case citations + dates, matched across
+      scripts), so a term like <code>Article 227</code> / <code>अनुच्छेद 227</code> is counted, not
+      just eyeballed. See <a href="dual-eval.html">Dual eval</a>.
+    </p>
 
     <h2>1. Legal term -- revisional court / Article 227</h2>
     <div class="card">

@@ -8,38 +8,103 @@
 </head>
 <body data-page="glossary">
   <div id="page-source" data-title="Glossary" data-kicker="Close">
-    <p>Terms used throughout the walkthrough and report.</p>
+    <p>
+      Terms used throughout the walkthrough and report, grouped by phase. Every term maps to code
+      in <code>src/</code> or a decision in <code>DESIGN_DECISIONS.md</code>.
+    </p>
+
+    <h2>Data &amp; preprocessing</h2>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
         <tbody>
-          <tr><td>A1</td><td>Stage A curriculum first: ~80k curated pairs, LoRA from base NLLB</td></tr>
-          <tr><td>A2</td><td>Stage A scale: 150k pairs, resume A1; production dual-policy pick</td></tr>
-          <tr><td>Stage B</td><td>Assignment-only specialize; failed external anti-forget without replay</td></tr>
-          <tr><td>B'</td><td>Stage B with assignment + Stage A replay mix</td></tr>
-          <tr><td>Track D</td><td>Defaults track: stock NLLB tokenizer + LoRA</td></tr>
-          <tr><td>Track C</td><td>Custom domain SPM + model adapt experiments</td></tr>
-          <tr><td>C0</td><td>Domain SPM freeze joint_full_41000</td></tr>
-          <tr><td>C1a</td><td>Train enc-dec from scratch with domain SPM (stopped as quality path)</td></tr>
-          <tr><td>C1c</td><td>NLLB vocab-extend + LoRA (v1 bulk failed; v2 careful still below ZS)</td></tr>
-          <tr><td>Policy I</td><td>Internal assignment eval (test docs 1,4,21)</td></tr>
-          <tr><td>Policy E</td><td>External legal holdouts (MILPaC + Anuvaad) never in Stage A train</td></tr>
-          <tr><td>LoRA</td><td>Low-Rank Adaptation PEFT; ~0.5% params on decoder_attn profile</td></tr>
-          <tr><td>decoder_attn</td><td>LoRA on decoder self-attn and encoder-decoder cross-attn</td></tr>
-          <tr><td>chrF++</td><td>Primary HI quality metric (char n-grams + word unigrams)</td></tr>
-          <tr><td>BLEU</td><td>sacreBLEU lexical overlap; reported but weaker alone for HI</td></tr>
-          <tr><td>LaBSE</td><td>Sentence embedding model for EN-HI mutual-best alignment</td></tr>
-          <tr><td>NLLB</td><td>Meta NLLB-200 distilled 600M seq2seq MT (eng_Latn -&gt; hin_Deva)</td></tr>
-          <tr><td>SPM</td><td>SentencePiece (domain Unigram models for Track C)</td></tr>
-          <tr><td>anti-forget</td><td>Constraint: external legal quality must not drop past a bar when specializing</td></tr>
-          <tr><td>best_primary</td><td>Checkpoint with best dual-policy primary score on dev</td></tr>
-          <tr><td>new_embed_rows.pt</td><td>Saved new embedding rows for C1c v2 (not in PEFT LoRA adapter)</td></tr>
-          <tr><td>MILPaC</td><td>Law-AI Multilingual Indian Legal Parallel Corpus</td></tr>
-          <tr><td>Anuvaad</td><td>Anuvaad legal EN-HI parallel sources (scale Stage A)</td></tr>
-          <tr><td>ZS</td><td>Zero-shot: base NLLB without fine-tune adapters</td></tr>
-          <tr><td>DDP</td><td>DistributedDataParallel (torchrun, here often 2x H200)</td></tr>
-          <tr><td>H200</td><td>NVIDIA H200 GPU used for optional full train/eval</td></tr>
-          <tr><td>MPS</td><td>Apple Metal Performance Shaders backend for local PyTorch</td></tr>
+          <tr><td>Policy I</td><td>Internal assignment eval (test docs 1,4,21; dev docs 8,9,24).</td></tr>
+          <tr><td>Policy E</td><td>External legal holdouts (MILPaC + Anuvaad) never in Stage A train; the anti-overfit guard.</td></tr>
+          <tr><td>danda (।)</td><td>Hindi sentence terminator. A sentence's last unit usually carries it; OCR hard-wraps split it across lines, which the line-join step fixes.</td></tr>
+          <tr><td>Hindi line-join</td><td><code>join_hindi_lines.py</code>: danda-aware joining of OCR hard-wrapped lines so a logical sentence survives as one unit. Idempotent (verified fixed point).</td></tr>
+          <tr><td>0.6 alignment floor</td><td><code>MIN_SIMILARITY = 0.6</code>: LaBSE mutual-best pairs below 0.6 are dropped, plus a 0.01 winner-vs-runner margin that kills tie duplicates.</td></tr>
+          <tr><td>verify-ocr gate</td><td><code>make verify-ocr</code>: hard check that <code>preprocessed/</code> is Tesseract OCR (Devanagari floors + text-layer markers), exits 1 on degradation. Enforced after the doc-6 regression.</td></tr>
+          <tr><td>LaBSE</td><td>Sentence embedding model used for EN-HI mutual-best alignment.</td></tr>
+          <tr><td>mutual-best</td><td>Keep an EN-HI pair only when each side is the other's nearest LaBSE neighbor (not DP -- the similarity matrix is ~0.1% dense).</td></tr>
+          <tr><td>Stage A</td><td>Public legal EN-HI bitext (~993k filtered): MILPaC (CC BY-NC-SA) + Anuvaad legal (CC BY), used for domain LoRA.</td></tr>
+          <tr><td>doc-level split</td><td>Train/dev/test split at the document level (seed 42) so the same judgment never spans splits; IDs frozen in <code>src/config.py</code>.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Tokenizer</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td>SPM</td><td>SentencePiece (domain Unigram models for Track C).</td></tr>
+          <tr><td>C0</td><td>Domain SPM freeze <code>joint_full_41000</code> (joint EN+HI Unigram 41k).</td></tr>
+          <tr><td>split_by_unicode_script</td><td>SPM option that forces EN/HI boundary splits. The freeze originally inherited SPM's default <code>True</code>; the matrix uses <code>False</code>, so the freeze was retrained to match (proto-verified, matrix-identical).</td></tr>
+          <tr><td>chars/token (c/t)</td><td>Corpus chars per token; higher = denser packing = cheaper sequences.</td></tr>
+          <tr><td>HI/EN ratio</td><td>Hindi tokens per English token; closer to 1 = less Indic overhead.</td></tr>
+          <tr><td>byte-level BPE</td><td>BPE that operates on UTF-8 bytes (Llama/Qwen/DeepSeek/Mistral). Devanagari-blind: ~0 Dev vocab entries, 1.1-2.7x HI token cost.</td></tr>
+          <tr><td>held-out bench</td><td>Tokenizer packing measured on assignment dev+test docs, which the SPM was never trained on (firewall).</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Training</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td>Track D</td><td>Defaults track: stock NLLB tokenizer + LoRA. Production path.</td></tr>
+          <tr><td>Track C</td><td>Custom domain SPM + model adapt experiments (vocab-extend).</td></tr>
+          <tr><td>A1</td><td>Stage A curriculum first: ~80k curated pairs, LoRA from base NLLB.</td></tr>
+          <tr><td>A2</td><td>Stage A scale: 150k pairs, resume A1; production dual-policy pick.</td></tr>
+          <tr><td>Stage B</td><td>Assignment-only specialize; failed external anti-forget without replay.</td></tr>
+          <tr><td>B'</td><td>Stage B with assignment + Stage A replay mix (anti-forget method works, still not a dual-policy winner).</td></tr>
+          <tr><td>LoRA</td><td>Low-Rank Adaptation PEFT; ~0.5% params on <code>decoder_attn</code> profile.</td></tr>
+          <tr><td>decoder_attn</td><td>LoRA on decoder self-attn and encoder-decoder cross-attn (the MT alignment hinge).</td></tr>
+          <tr><td>z-scored primary</td><td>Stage B checkpoint selection: <code>z_i = (s_i - mean_i)/std_i</code>, <code>primary = sum(w_i*z_i)/sum(w_i)</code>. Makes 0.7/0.3 weights mean what they say across differently-scaled suites.</td></tr>
+          <tr><td>anti-forget caps</td><td><code>stage_b_max_drop_&lt;suite&gt;</code>: reject a checkpoint whose suite drops more than the cap vs baseline. Enforced in <code>selection.py</code> (was YAML-only).</td></tr>
+          <tr><td>best_primary</td><td>Checkpoint with best dual-policy primary score on dev; saved to <code>checkpoints/best_primary</code>.</td></tr>
+          <tr><td>new_embed_rows.pt</td><td>Saved new embedding rows for C1c v2 (not in the PEFT LoRA adapter); resume raises if missing when <code>new_embed_start</code> is set.</td></tr>
+          <tr><td>global batch parity</td><td><code>global_batch_parity</code> warns/raises when <code>batch*world*accum != train.global_batch_size</code> (local MPS 16 vs H200 32 is explicit).</td></tr>
+          <tr><td>pool hash verify</td><td><code>verify_pool_hashes</code> checks the <code>file_sha256</code> prefix of every frozen subsample against its manifest at launch.</td></tr>
+          <tr><td>run registry</td><td><code>data/runs/runs.json</code>: maps run_id to config snapshot, data manifest, logs, best checkpoint -- no grep archaeology.</td></tr>
+          <tr><td>GradScaler('mps')</td><td>MPS fp16 training with fp32 master weights + mps autocast + scaling; CUDA bf16 unchanged.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Evaluation</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td>chrF++</td><td>Primary HI quality metric (char n-grams + word unigrams, <code>word_order=2</code>).</td></tr>
+          <tr><td>BLEU</td><td>sacreBLEU lexical overlap; reported but weaker alone for HI.</td></tr>
+          <tr><td>bootstrap CI</td><td>Per-suite 95% confidence interval from sacreBLEU's built-in bootstrap (mean, ci_low, ci_high), seeded for reproducibility.</td></tr>
+          <tr><td>paired diff CI</td><td><code>--compare-tags A,B</code>: paired-bootstrap 95% CI on the corpus metric delta between two systems, with a <code>significant</code> flag.</td></tr>
+          <tr><td>fingerprint</td><td>Config + hyp-file SHA256 recorded per report; resume refuses to mix rows decoded under a different config (<code>--force-resume</code> overrides).</td></tr>
+          <tr><td>TER</td><td>Translation Edit Rate (sacreBLEU), lower is better; makes verbosity visible.</td></tr>
+          <tr><td>len_ratio</td><td><code>sys_len / ref_len</code> per suite; exposes the ~1.377x verbosity that BLEU's missing brevity penalty hides.</td></tr>
+          <tr><td>ref_cleaned</td><td>BLEU/chrF++ on references with OCR/list-marker artifacts stripped (refs only, labeled, additive).</td></tr>
+          <tr><td>entities</td><td>Legal-entity recall/precision/F1 per suite (probes + case citations + dates, cross-script canonicalized).</td></tr>
+          <tr><td>COMET-22</td><td>Reference-based neural metric (<code>Unbabel/wmt22-comet-da</code>); cache keyed on hyp-file SHA256 + model (schema v2).</td></tr>
+          <tr><td>MBR</td><td>Minimum Bayes Risk decode: sample N, output argmax mean pairwise chrF utility; seeded (12345) for reproducibility.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Infrastructure</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td>NLLB</td><td>Meta NLLB-200 distilled 600M seq2seq MT (eng_Latn -&gt; hin_Deva).</td></tr>
+          <tr><td>ZS</td><td>Zero-shot: base NLLB without fine-tune adapters.</td></tr>
+          <tr><td>DDP</td><td>DistributedDataParallel (torchrun, here 2x H200).</td></tr>
+          <tr><td>H200</td><td>NVIDIA H200 GPU used for optional full train/eval.</td></tr>
+          <tr><td>MPS</td><td>Apple Metal Performance Shaders backend for local PyTorch.</td></tr>
+          <tr><td>MILPaC</td><td>Law-AI Multilingual Indian Legal Parallel Corpus (CC BY-NC-SA).</td></tr>
+          <tr><td>Anuvaad</td><td>Anuvaad legal EN-HI parallel sources (CC BY), the Stage A scale source.</td></tr>
         </tbody>
       </table>
     </div>

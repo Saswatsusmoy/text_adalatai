@@ -27,16 +27,22 @@
     </div>
     <p>
       Both sources are already aligned upstream. We do <strong>not</strong> re-OCR or re-run LaBSE on
-      the full pool (cost would dominate with little gain). Schema normalize + shared length QC only.
+      the full pool: Anuvaad judiciary alone is ~830k lines, and a full mutual-best re-alignment
+      would dominate wall time and RAM for marginal gain on auto-mined bitext. Schema normalize +
+      shared length QC only. Assignment data remains the only corpus that went through the LaBSE
+      pipeline.
     </p>
 
     <h2>Ingest pipeline</h2>
     <pre class="codeblock">make external-download   # optional fetch into data/external/raw/
 make external-ingest     # -&gt; data/external/parallel/*.jsonl
-make external-eval-split # Policy E holdouts + stage_a_train.jsonl</pre>
+make external-eval-split # Policy E holdouts + stage_a_train.jsonl
+PYTHONPATH=. python -m src.evaluation.eval_sets   # leak validation</pre>
     <p>Module: <code>src/preprocessing/ingest_external_parallel.py</code>.</p>
     <p>Filters (aligned with assignment QC philosophy): EN:HI char ratio 0.3-3.0, min length &gt; 3,
-      exact (en, hi) pair dedup. No LaBSE re-score.</p>
+      exact (en, hi) pair dedup. No LaBSE re-score. <code>split_external_eval.py</code> carves the
+      Policy E holdouts <em>before</em> writing <code>stage_a_train.jsonl</code>, and
+      <code>eval_sets.py</code> verifies zero exact-pair overlap between train and every eval file.</p>
 
     <h2>Outputs (approximate counts after freeze)</h2>
     <div class="table-wrap">
@@ -56,7 +62,8 @@ make external-eval-split # Policy E holdouts + stage_a_train.jsonl</pre>
     <h2>Curriculum subsamples (training efficiency)</h2>
     <p>
       Full 988k is unnecessary for every experiment. <code>src/training/subsample.py</code> builds
-      frozen curricula from <code>stage_a_train</code>:
+      frozen curricula from <code>stage_a_train</code> with a fixed seed (42) so the same file is
+      reproduced exactly:
     </p>
     <div class="table-wrap">
       <table>
@@ -69,12 +76,22 @@ make external-eval-split # Policy E holdouts + stage_a_train.jsonl</pre>
         </tbody>
       </table>
     </div>
+    <p>
+      Every frozen subsample carries a sibling <code>*_manifest.json</code> with a
+      <code>source_pool_sha256_prefix</code>. The Phase 3 harness verifies this hash at launch
+      (<code>verify_pool_hashes</code>, warn by default, <code>data.strict_source_pool_hash: true</code>
+      raises), so a regenerated pool can never silently invalidate a frozen subsample.
+    </p>
 
     <div class="callout warn">
-      <div class="label">Firewall</div>
+      <div class="label">Firewall (triple-checked)</div>
       <p>
         Assignment test docs never enter Stage A training. Policy E pairs never enter
-        <code>stage_a_train.jsonl</code>. Validation: <code>python -m src.evaluation.eval_sets</code>.
+        <code>stage_a_train.jsonl</code>. The SPM corpus excludes assignment dev/test docs by a hard
+        code check. Validation: <code>python -m src.evaluation.eval_sets</code>. Known caveat: the
+        SPM v2 corpus was fit on the full <code>stage_a_en_hi.jsonl</code> (before the E carve), so
+        tokenizer-level E leakage is small and acknowledged (it affects no shipped output, since
+        Track D ships on NLLB native tokens).
       </p>
     </div>
   </div>

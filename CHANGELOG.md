@@ -4,6 +4,32 @@
 
 ### Added
 
+- **Story made comprehensive across the remaining pages**:
+  - `assignment.html`: Task 2 filters corrected (0.6 floor + margin, junk
+    rejection, frozen doc IDs), Task 4 now lists the Phase 4 eval harness.
+  - `problem.html`: two-pillar motivation now carries the token-cost evidence
+    (3 bytes/char Devanagari, 1.1-2.7x byte-BPE overhead, context-window impact).
+  - `glossary.html`: rewritten into four grouped tables (data, tokenizer,
+    training, eval + infra) covering every phase term incl. z-scored primary,
+    anti-forget caps, fingerprints, paired diff CI, TER/len_ratio, ref_cleaned,
+    entities, GradScaler, run registry, pool-hash verify.
+  - `tracks.html`: "What actually happened" outcomes table + "why NLLB + LoRA
+    not a small LLM" + selection-harness note in the LoRA table.
+  - `production.html`: rejected systems now labeled by failing axis (external /
+    quality / dual), Phase 3 auto-rejection note, Phase 4 CI caveat, run-registry
+    + adapter-attach recipe, full decision table (1..41).
+  - `stage-a.html`: why no LaBSE re-score (Anuvaad 830k lines), carve-before-
+    train + eval_sets leak validation, subsample determinism + pool-hash verify,
+    SPM-E-leak caveat.
+  - `mbr.html`: seed row + Phase 4 point-estimate caveat on the verdict.
+  - `track-c.html`: why mean-init underperforms, Phase 3 resume hardening
+    (raise on missing new_embed_rows.pt, grad-mask reinstall).
+  - `qualitative.html`: entity-panel tie-in.
+  - `reproduce.html`: Phase 4 harness commands (--score-only/--max-pairs,
+    --compare-tags, comet-score, entities in reports).
+  - `reflection.html`: what-worked/did-not updated for Phases 3-4; tier-list
+    framed as remaining model-quality work (harness complete).
+
 - **Story reflects the Phase 4 eval-harness fixes** (DESIGN §41):
   - `scoreboard.html`: Phase 4 callout stating the historical table predates CIs
     (verdicts are point estimates, not re-scored); COMET section caveat added.

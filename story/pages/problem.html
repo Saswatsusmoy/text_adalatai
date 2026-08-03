@@ -24,6 +24,12 @@
       Optimizing only packing can ship a tokenizer story that does not translate better. Optimizing
       only BLEU without dual holdouts can overfit a 30-document set. This project measures both.
     </p>
+    <p><strong>Why token cost is real for Hindi:</strong> Devanagari is 3 UTF-8 bytes per character.
+      Byte-level BPE tokenizers (Llama/Qwen/DeepSeek/Mistral line) have zero Devanagari vocab entries
+      and fall back to byte tokens, costing <strong>1.1-2.7x more tokens</strong> for Hindi than
+      English. A 128k-context window fits 40-70% as much Hindi text. Char-aware SentencePiece and
+      multilingual BPE (NLLB, GPT-4o) avoid this; a domain SentencePiece can beat them on legal
+      packing with ~1000x less data (see <a href="tokenizers.html">Tokenizers</a>).</p>
 
     <h2>Corpus (assignment)</h2>
     <div class="table-wrap">

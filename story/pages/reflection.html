@@ -16,28 +16,32 @@
     <h2>What worked</h2>
     <ul>
       <li><strong>Document-level splits</strong> -- no judgment leakage into test.</li>
-      <li><strong>OCR over PDF text layer</strong> for Hindi -- ligature damage is worse than OCR noise.</li>
+      <li><strong>OCR over PDF text layer</strong> for Hindi -- ligature damage is worse than OCR noise; enforced by a hard <code>verify-ocr</code> gate.</li>
       <li><strong>Dual-policy I + E</strong> -- Stage B would have shipped incorrectly without E.</li>
       <li><strong>LoRA on NLLB decoder attention</strong> -- cheap (~0.5% params), real dual-policy gains.</li>
       <li><strong>Curriculum A1 -&gt; A2</strong> -- small curated Stage A first, then scale resume.</li>
-      <li><strong>Domain SentencePiece science</strong> -- clear packing evidence vs byte-level BPE.</li>
+      <li><strong>Domain SentencePiece science</strong> -- clear packing evidence vs byte-level BPE; freeze made matrix-consistent.</li>
       <li><strong>Documenting failures</strong> (bulk C1c, pure Stage B) as first-class results.</li>
+      <li><strong>Harness hardening</strong> -- enforced anti-forget caps + z-scored selection, NaN-safe DDP, MPS fp16 scaling, frozen-pool hash verification, run registry, bootstrap CIs + paired difference CIs, report fingerprints, COMET cache invalidation, legal-entity panel. These turned "trust me" numbers into reproducible, interval-carrying results.</li>
     </ul>
 
     <h2>What did not</h2>
     <ul>
       <li>Custom vocab + short LoRA budget did not beat NLLB priors (C1c v2 still below ZS).</li>
       <li>Assignment-only Stage B overfits I and forgets external legal.</li>
-      <li>Legal error panel / glossary QA not automated (still a gap; COMET-22 is now run and reinforces the BLEU/chrF++ ordering, see Scoreboard).</li>
-      <li>OCR HI references can be truncated -- metrics mix model and ref error.</li>
+      <li>MBR at the tried config (N=8, top_p=0.9, chrF utility) lost to beam4; larger N / lower T / COMET utility not yet tried.</li>
+      <li>OCR HI references can be truncated -- metrics mix model and ref error (a ref-cleaned column now isolates the artifact).</li>
+      <li>Reference-free QE (CometKiwi / xCOMET) and a full legal-error panel are still gaps (the entity panel covers part of it).</li>
     </ul>
 
     <h2>How I would improve next (ranked, not run)</h2>
     <p>
-      Concrete levers to push A2 (currently I 21.86/49.66, E_milpac 34.90/56.46,
-      E_anuvaad 45.80/64.83) beyond its current dual-policy numbers. Each entry says
-      what changes, expected delta on I_test BLEU, wall-clock on H200, and the paper /
-      technique it draws from. Ranked by expected quality gain / effort / defensibility.
+      <em>Harness note:</em> the Phase 1-4 work (data quality, tokenizer freeze, training selection
+      caps + z-scoring, eval CIs + fingerprints + entity panel) is complete. What remains below is
+      the <strong>model-quality</strong> tier list -- levers to push A2 (currently I 21.86/49.66,
+      E_milpac 34.90/56.46, E_anuvaad 45.80/64.83) beyond its current dual-policy numbers. Each entry
+      says what changes, expected delta on I_test BLEU, wall-clock on H200, and the paper / technique
+      it draws from. Ranked by expected quality gain / effort / defensibility.
     </p>
 
     <h3>Tier 1 &mdash; biggest defensible gains</h3>

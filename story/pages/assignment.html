@@ -42,10 +42,13 @@
       and legal formatting where possible.</p>
     <p><strong>Done:</strong></p>
     <ul>
-      <li>Hindi OCR (Tesseract), EN line join, spaCy/danda segmentation, LaBSE mutual-best alignment.</li>
-      <li>Filters: min similarity 0.5, EN:HI char ratio 0.3-3.0, near-dedup.</li>
-      <li>Document-level split seed 42 -&gt; 1,010 / 122 / 168 (not sentence-random).</li>
-      <li>Optional public legal parallel: MILPaC + Anuvaad Stage A (~993k filtered).</li>
+      <li>Hindi OCR (Tesseract, verified by a hard <code>make verify-ocr</code> gate), EN line join,
+        danda-aware Hindi line-join, spaCy/danda segmentation, LaBSE mutual-best alignment.</li>
+      <li>Filters: min similarity <strong>0.6</strong> + mutual-best margin (kills tie duplicates),
+        EN:HI char ratio 0.3-3.0, near-dedup, number-only and short dangling-fragment rejection.</li>
+      <li>Document-level split seed 42 -&gt; 1,010 / 122 / 168 (not sentence-random); doc IDs frozen in
+        <code>src/config.py</code> so a data fix never re-rolls the split.</li>
+      <li>Optional public legal parallel: MILPaC + Anuvaad Stage A (~993k filtered, dual-policy carve).</li>
     </ul>
     <p><strong>Where:</strong> <code>src/preprocessing/</code>, page <a href="pipeline.html">Data pipeline</a>.</p>
 
@@ -73,6 +76,10 @@
       <li>Token usage tables for domain SP vs general tokenizers.</li>
       <li>Qualitative: revisional court, Article 142, writ petition, appellant role, archaic phrasing.</li>
       <li>COMET-22 (<code>Unbabel/wmt22-comet-da</code>) run over all shipped hyps; reinforces BLEU/chrF++ ordering. See <a href="scoreboard.html">Scoreboard</a>.</li>
+      <li><strong>Statistical grounding (Phase 4 harness):</strong> per-suite 95% bootstrap CIs,
+        paired-bootstrap difference CI (<code>--compare-tags A,B</code>), report fingerprints,
+        seeded MBR, TER + length-ratio, ref-cleaned column, legal-entity panel, COMET cache keyed
+        on hyp-file hash. See <a href="dual-eval.html">Dual eval</a>.</li>
     </ul>
     <p><strong>Where:</strong> <code>src/evaluation/</code>, pages
       <a href="scoreboard.html">Scoreboard</a> and <a href="qualitative.html">Qualitative</a>.</p>
