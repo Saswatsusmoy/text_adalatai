@@ -99,7 +99,7 @@ eval_policies:
 alignment:
   model: sentence-transformers/LaBSE
   method: mutual_best_greedy
-  min_similarity: 0.5
+  min_similarity: 0.6
   char_ratio_min: 0.3
   char_ratio_max: 3.0
   min_text_length: 3

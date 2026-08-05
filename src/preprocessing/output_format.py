@@ -124,7 +124,7 @@ def build_report(pairs: list[dict]) -> dict:
             'model': 'sentence-transformers/LaBSE',
             'method': 'bidirectional greedy matching',
             'filters': {
-                'min_similarity': 0.5,
+                'min_similarity': 0.6,
                 'char_ratio_range': [0.3, 3.0],
                 'min_text_length': 3,
                 'dedup_jaccard_threshold': 0.85,

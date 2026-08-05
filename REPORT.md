@@ -134,7 +134,7 @@ test:  1, 4, 21
 | Align | `align_sentences.py` | LaBSE mutual-best |
 | Split | `output_format.py` | train/dev/test JSONL |
 
-Filters: LaBSE sim >= 0.5, EN:HI char ratio 0.3-3.0, min length, EN Jaccard near-dedup 0.85.
+Filters: LaBSE sim >= 0.6, EN:HI char ratio 0.3-3.0, min length, EN Jaccard near-dedup 0.85.
 
 Reproduce: `make preprocess` (or `python run_pipeline.py --steps preprocess`).
 

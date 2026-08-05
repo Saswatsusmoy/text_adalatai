@@ -67,7 +67,7 @@ Also in `src/config.py` as `TRAIN_DOC_IDS` / `DEV_DOC_IDS` / `TEST_DOC_IDS`.
 
 | Filter | Threshold |
 |--------|-----------|
-| Min LaBSE similarity | >= 0.5 |
+| Min LaBSE similarity | >= 0.6 |
 | EN:HI char ratio | 0.3 - 3.0 |
 | Min text length | > 3 chars |
 | EN near-dedup | Jaccard > 0.85 drops weaker |

@@ -247,6 +247,14 @@
   - Tests: `tests/preprocessing/test_corrupted_docs_ocr.py`.
   - **Not** re-trained A2 or re-scored COMET; prior metrics used the old doc-6 HI refs.
 
+- **Alignment threshold mirrors synced to live 0.6** (code had `MIN_SIMILARITY`
+  0.6 since DESIGN §38; doc/config mirrors still said 0.5):
+  - `configs/preprocessing.yaml` `alignment.min_similarity` 0.5 -> 0.6.
+  - `output_format.py` alignment report `min_similarity` 0.5 -> 0.6.
+  - `REPORT.md` §2.2 filter line and `docs/EXPERIMENTS.md` §2.4 table -> >= 0.6.
+  - Historical DESIGN §10 notes and CHANGELOG::432 entry left as-is (they
+    document the original >= 0.5 decision, superseded by DESIGN §38).
+
 ### Added
 
 - **Full tokenizer matrix (35 configs)** (DESIGN §33, EXPERIMENTS §4.5):
