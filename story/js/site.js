@@ -17,7 +17,6 @@
     { id: 'production', file: 'pages/production.html', label: 'Production pick', act: 'Close' },
     { id: 'failures', file: 'pages/failures.html', label: 'Failures log', act: 'Close' },
     { id: 'reflection', file: 'pages/reflection.html', label: 'Reflection', act: 'Close' },
-    { id: 'interview', file: 'pages/interview.html', label: 'Interview guide', act: 'Close' },
     { id: 'artifacts', file: 'pages/artifacts.html', label: 'Artifacts', act: 'Close' },
     { id: 'glossary', file: 'pages/glossary.html', label: 'Glossary', act: 'Close' },
     { id: 'reproduce', file: 'pages/reproduce.html', label: 'Reproduce', act: 'Close' },
