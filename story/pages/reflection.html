@@ -40,8 +40,8 @@
       caps + z-scoring, eval CIs + fingerprints + entity panel) is complete. What remains below is
       the <strong>model-quality</strong> tier list -- levers to push A2 (currently I 21.86/49.66,
       E_milpac 34.90/56.46, E_anuvaad 45.80/64.83) beyond its current dual-policy numbers. Each entry
-      says what changes, expected delta on I_test BLEU, wall-clock on H200, and the paper / technique
-      it draws from. Ranked by expected quality gain / effort / defensibility.
+      says what changes and the paper / technique it draws from. Ranked by expected quality gain /
+      effort / defensibility.
     </p>
 
     <h3>Tier 1 &mdash; biggest defensible gains</h3>
@@ -51,8 +51,6 @@
           <tr>
             <th>Lever</th>
             <th>Change</th>
-            <th>Expected &Delta;</th>
-            <th>H200 cost</th>
             <th>Basis</th>
           </tr>
         </thead>
@@ -60,22 +58,16 @@
           <tr>
             <td>Scale base to NLLB-1.3B distilled</td>
             <td>Swap <code>nllb-200-distilled-600M</code> &rarr; <code>-1.3B</code>; same LoRA decoder_attn r=16; rerun A1&rarr;A2 curriculum</td>
-            <td class="num">+2-3 BLEU</td>
-            <td>~4-6h</td>
             <td>Classic scaling; single-lever change with existing config</td>
           </tr>
           <tr>
             <td>Back-translation on Anuvaad HI-only</td>
             <td>Reverse-decode monolingual legal HI via NLLB HI&rarr;EN; LaBSE &ge; 0.6 filter; append synthetic pairs to Stage A; retrain A2</td>
-            <td class="num">+0.5-1.5 BLEU</td>
-            <td>~4h</td>
             <td>Sennrich et al. 2016; canonical MT augmentation</td>
           </tr>
           <tr>
             <td>CPO on top of A2 (ALMA-R recipe)</td>
             <td>Build (ref, A2 hyp, ZS hyp) triplets from existing hyp files; add Contrastive Preference Optimization loss for 500-1000 steps on top of the shipped A2 adapter</td>
-            <td class="num">+1-2 BLEU</td>
-            <td>~5-8h</td>
             <td>Xu et al. 2024 (ALMA-R); current MT preference-optimization SOTA; needs no new data since all triplets already exist</td>
           </tr>
         </tbody>
@@ -89,8 +81,6 @@
           <tr>
             <th>Lever</th>
             <th>Change</th>
-            <th>Expected &Delta;</th>
-            <th>H200 cost</th>
             <th>Basis</th>
           </tr>
         </thead>
@@ -98,22 +88,16 @@
           <tr>
             <td>Sequence-level KD from NLLB-3.3B</td>
             <td>NLLB-3.3B teacher decodes Stage A EN&rarr;HI; A2-600M student trains on teacher outputs instead of raw Anuvaad HI</td>
-            <td class="num">+1-2 BLEU</td>
-            <td>~6-8h</td>
             <td>Kim &amp; Rush 2016; teacher-bounded but low risk</td>
           </tr>
           <tr>
             <td>Rejection sampling + COMET-QE filter</td>
             <td>A2 samples N=8 hyps per Stage A source; xCOMET-QE keeps top 25%; SFT another A2 epoch on filtered</td>
-            <td class="num">+0.3-0.8 BLEU</td>
-            <td>~4-6h</td>
             <td>Meta Llama-3 recipe adapted; self-distillation</td>
           </tr>
           <tr>
             <td>Larger LoRA module surface</td>
             <td>Add encoder q,k,v,out and both-sides FFN <code>fc1,fc2</code> to LoRA profile; retrain A2 with same steps</td>
-            <td class="num">+0.3-0.8 BLEU</td>
-            <td>~4h</td>
             <td>More capacity at same-ish param budget; overfitting risk on the assignment set</td>
           </tr>
         </tbody>
@@ -127,8 +111,6 @@
           <tr>
             <th>Lever</th>
             <th>Change</th>
-            <th>Expected &Delta;</th>
-            <th>H200 cost</th>
             <th>Basis</th>
           </tr>
         </thead>
@@ -136,29 +118,21 @@
           <tr>
             <td>Constrained decode for entities + sections</td>
             <td>Build glossary from Stage A (Article X &rarr; अनुच्छेद X, Section Y &rarr; धारा Y, party names, S.L.P. numbers); apply <code>PrefixConstrainedLogitsProcessor</code> at inference</td>
-            <td class="num">+0.2-0.5 BLEU</td>
-            <td>~4-6h</td>
             <td>Higher qualitative signal than the number suggests -- fixes concrete legal errors in REPORT &sect;5</td>
           </tr>
           <tr>
             <td>MBR redo (Freitag 2022 recipe)</td>
             <td>N=64, epsilon-sampling &epsilon;=0.02 (not top_p=0.9), COMET-utility (not chrF utility)</td>
-            <td class="num">+0-1 chrF++</td>
-            <td>~4-6h</td>
             <td>Freitag et al. 2022; current MBR-at-N=8-with-chrF-utility lost by 2.5 chrF++ (DESIGN &sect;31) -- this rescue attempt is what the paper actually recommends</td>
           </tr>
           <tr>
             <td>Larger Stage A subsample (A3 = 400k)</td>
             <td>Bump A2's 150k to 400k of the 988k Stage A pool at same steps</td>
-            <td class="num">+0.3-0.8 BLEU</td>
-            <td>~4h</td>
             <td>Simple data scale; diminishing returns curve past ~50% of pool</td>
           </tr>
           <tr>
             <td>CometKiwi (reference-free) + glossary panel</td>
             <td>Add xCOMET-QE / CometKiwi neural score as a fourth metric column; extract per-suite legal-entity accuracy on the glossary</td>
-            <td class="num">metric only</td>
-            <td>~2h</td>
             <td>Beyond reference-based COMET-22 (already scored); QE is what production actually uses when refs don't exist</td>
           </tr>
         </tbody>
@@ -168,15 +142,14 @@
     <h3>Recommended combos</h3>
     <ul>
       <li><strong>Best single lever</strong>: Tier 1 &sect;1 (NLLB-1.3B) -- biggest gain, lowest risk, one config change.</li>
-      <li><strong>Best two-lever combo (~1 day H200)</strong>: Tier 1 &sect;1 + Tier 1 &sect;2 (1.3B + back-translation). Independent axes, additive gains, each classically defensible. Estimated <strong>+3-5 BLEU on I_test</strong>.</li>
+      <li><strong>Best two-lever combo</strong>: Tier 1 &sect;1 + Tier 1 &sect;2 (1.3B + back-translation). Independent axes, additive gains, each classically defensible. Estimated <strong>+3-5 BLEU on I_test</strong>.</li>
       <li><strong>Modern-technique story</strong>: Tier 1 &sect;1 + Tier 1 &sect;3 (1.3B + CPO). Frontier flavour but harder to defend if drilled on CPO length bias / KL / reward hacking.</li>
       <li><strong>Assignment-fidelity story</strong>: Tier 1 &sect;1 + Tier 3 (constrained decode) + qualitative rerun on same REPORT &sect;5 examples.</li>
     </ul>
 
     <p class="muted">
       None of the above were executed in this submission. Every entry names the actual paper /
-      technique, expected delta, and H200 cost so a follow-up run is deterministic. Deltas are
-      literature estimates on comparable MT benchmarks, not measured on this corpus.
+      technique so a follow-up run is deterministic.
     </p>
 
     <h2>Scaling to more languages / harder legal text</h2>
