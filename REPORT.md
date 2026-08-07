@@ -407,37 +407,37 @@ Full hyp dumps: `data/analysis/zero_shot_nllb_I_test_hyps.jsonl`, `data/analysis
 
 ### 6.3 How we would improve (ranked, not run)
 
-Concrete levers to push A2 beyond its current dual-policy numbers. Each entry names the change, an expected delta on I_test BLEU, wall-clock on H200, and the paper/technique it draws from. Deltas are literature estimates on comparable MT benchmarks, not measured on this corpus.
+Concrete levers to push A2 beyond its current dual-policy numbers. Each entry names the change and the paper/technique it draws from.
 
 **Tier 1 -- biggest defensible gains**
 
-| Lever | Change | Expected delta | H200 cost | Basis |
-|-------|--------|---------------:|----------:|-------|
-| Scale base to NLLB-1.3B distilled | Swap `nllb-200-distilled-600M` -> `-1.3B`; same LoRA decoder_attn r=16; rerun A1 -> A2 curriculum | +2-3 BLEU | ~4-6h | Classic scaling; single-lever change |
-| Back-translation on Anuvaad HI-only | Reverse-decode monolingual legal HI via NLLB HI -> EN; LaBSE >= 0.6 filter; append synthetic pairs to Stage A; retrain A2 | +0.5-1.5 BLEU | ~4h | Sennrich et al. 2016 (canonical MT augmentation) |
-| CPO on top of A2 (ALMA-R) | (ref, A2 hyp, ZS hyp) triplets from existing hyp files; Contrastive Preference Optimization loss for 500-1000 steps | +1-2 BLEU | ~5-8h | Xu et al. 2024; current MT preference-optimization SOTA; no new data required |
+| Lever | Change | Basis |
+|-------|--------|-------|
+| Scale base to NLLB-1.3B distilled | Swap `nllb-200-distilled-600M` -> `-1.3B`; same LoRA decoder_attn r=16; rerun A1 -> A2 curriculum | Classic scaling; single-lever change |
+| Back-translation on Anuvaad HI-only | Reverse-decode monolingual legal HI via NLLB HI -> EN; LaBSE >= 0.6 filter; append synthetic pairs to Stage A; retrain A2 | Sennrich et al. 2016 (canonical MT augmentation) |
+| CPO on top of A2 (ALMA-R) | (ref, A2 hyp, ZS hyp) triplets from existing hyp files; Contrastive Preference Optimization loss for 500-1000 steps | Xu et al. 2024; current MT preference-optimization SOTA; no new data required |
 
 **Tier 2 -- solid, narrower**
 
-| Lever | Change | Expected delta | H200 cost | Basis |
-|-------|--------|---------------:|----------:|-------|
-| Sequence-level KD from NLLB-3.3B | NLLB-3.3B decodes Stage A EN -> HI; A2-600M student trains on teacher outputs | +1-2 BLEU | ~6-8h | Kim & Rush 2016; teacher-bounded, low risk |
-| Rejection sampling + COMET-QE filter | A2 samples N=8 per source; xCOMET-QE keeps top 25%; SFT one more A2 pass | +0.3-0.8 BLEU | ~4-6h | Meta Llama-3 recipe; self-distillation |
-| Larger LoRA module surface | Add encoder q,k,v,out and both-sides FFN `fc1,fc2`; retrain A2 same steps | +0.3-0.8 BLEU | ~4h | More capacity at same-ish param budget; overfitting risk on 1,136 train pairs |
+| Lever | Change | Basis |
+|-------|--------|-------|
+| Sequence-level KD from NLLB-3.3B | NLLB-3.3B decodes Stage A EN -> HI; A2-600M student trains on teacher outputs | Kim & Rush 2016; teacher-bounded, low risk |
+| Rejection sampling + COMET-QE filter | A2 samples N=8 per source; xCOMET-QE keeps top 25%; SFT one more A2 pass | Meta Llama-3 recipe; self-distillation |
+| Larger LoRA module surface | Add encoder q,k,v,out and both-sides FFN `fc1,fc2`; retrain A2 same steps | More capacity at same-ish param budget; overfitting risk on 1,136 train pairs |
 
 **Tier 3 -- polish (stacks on Tier 1)**
 
-| Lever | Change | Expected delta | H200 cost | Basis |
-|-------|--------|---------------:|----------:|-------|
-| Constrained decode for entities + sections | Glossary from Stage A (Article X -> अनुच्छेद X, Section Y -> धारा Y, party names, S.L.P. numbers); `PrefixConstrainedLogitsProcessor` at inference | +0.2-0.5 BLEU | ~4-6h | Higher qualitative signal than the number suggests; fixes concrete errors in §5 |
-| MBR redo (Freitag 2022) | N=64, epsilon-sampling e=0.02 (not top_p=0.9), COMET-utility (not chrF utility) | +0-1 chrF++ | ~4-6h | Rescue attempt for the N=8 chrF-utility MBR that lost in DESIGN §31; this is what the paper actually recommends |
-| Larger Stage A subsample (A3=400k) | Bump A2's 150k to 400k of the 988k Stage A at same steps | +0.3-0.8 BLEU | ~4h | Simple data scale; diminishing returns past ~50% |
-| CometKiwi (reference-free) + glossary panel | Add xCOMET-QE / CometKiwi as a fourth metric; extract per-suite legal-entity accuracy on the glossary | metric only | ~2h | Beyond reference-based COMET-22 already scored; QE is what production uses when refs don't exist |
+| Lever | Change | Basis |
+|-------|--------|-------|
+| Constrained decode for entities + sections | Glossary from Stage A (Article X -> अनुच्छेद X, Section Y -> धारा Y, party names, S.L.P. numbers); `PrefixConstrainedLogitsProcessor` at inference | Higher qualitative signal than the number suggests; fixes concrete errors in §5 |
+| MBR redo (Freitag 2022) | N=64, epsilon-sampling e=0.02 (not top_p=0.9), COMET-utility (not chrF utility) | Rescue attempt for the N=8 chrF-utility MBR that lost in DESIGN §31; this is what the paper actually recommends |
+| Larger Stage A subsample (A3=400k) | Bump A2's 150k to 400k of the 988k Stage A at same steps | Simple data scale; diminishing returns past ~50% |
+| CometKiwi (reference-free) + glossary panel | Add xCOMET-QE / CometKiwi as a fourth metric; extract per-suite legal-entity accuracy on the glossary | Beyond reference-based COMET-22 already scored; QE is what production uses when refs don't exist |
 
 **Recommended combos:**
 
 - **Best single lever**: Tier 1 #1 (NLLB-1.3B) -- biggest gain, one config change, lowest risk.
-- **Best two-lever combo (~1 day H200)**: Tier 1 #1 + #2 (1.3B + back-translation). Independent axes, additive gains. Estimated **+3-5 BLEU on I_test**.
+- **Best two-lever combo**: Tier 1 #1 + #2 (1.3B + back-translation). Independent axes, additive gains. Estimated **+3-5 BLEU on I_test**.
 - **Modern-technique story**: Tier 1 #1 + #3 (1.3B + CPO). Frontier flavour; harder to defend if drilled on CPO length bias / KL / reward hacking.
 - **Assignment-fidelity story**: Tier 1 #1 + Tier 3 constrained decode + qualitative rerun on the §5 examples.
 
